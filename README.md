@@ -4,7 +4,7 @@ Aplicación en español para identificación, genealogía, salud, alojamiento y 
 
 ## Instalar y ejecutar
 
-Requiere Node.js 20.19+ o 22.12+ y npm.
+Requiere Node.js 22.13+ o 24+ y npm.
 
 ```sh
 npm install
@@ -52,3 +52,15 @@ La página Ayuda, en el menú lateral, explica cada función y los formatos de c
 ## PL
 
 Campo manual, opcional y editable que cuenta cuántos criaderos ha tenido el gallo, sin registrar sus nombres. No se recalcula al cambiar el criadero actual. Acepta enteros no negativos; vacío significa desconocido y es distinto de cero. Se muestra en lista, ficha y PDF, y se conserva en JSON y en la columna CSV `pl`. Más filtros permite elegir un valor de PL o registros sin datos.
+
+## Diseño de las fichas PDF
+
+Las fichas usan la paleta marfil, verde bosque y terracota de la interfaz, tarjetas de datos, secciones numeradas y pies de página. La misma ilustración vectorial del gallo que usa la web aparece cuando no hay foto o esta no puede leerse. La tipografía Liberation Sans está incluida en el PDF para asegurar acentos y consistencia visual sin descargas externas (licencia en `src/assets/FONT-LICENSE.txt`). Las notas y el historial continúan en nuevas páginas cuando es necesario. Cada gallo comienza en una página propia en exportaciones múltiples.
+
+## Administración de categorías
+
+La pestaña Administración permite cambiar el nombre de PL y de los catálogos de propósito, raza, color, estado sanitario y tipo de evento; también añade, renombra y elimina opciones. Cambiar el nombre de PL conserva su validación de entero opcional no negativo y su significado de cantidad de criaderos. Renombrar opciones actualiza fichas y eventos asociados; borrar opciones en uso se bloquea para no dejar datos sin clasificar. El catálogo de raza y color funciona como sugerencia y permite texto libre.
+
+Se crea un PIN local de 6 a 12 dígitos en el primer acceso. El PIN se deriva con PBKDF2-SHA256 y una sal aleatoria; se guarda en localStorage separado de los datos exportados. Se bloquea al salir de la pestaña o tras diez minutos y se puede cambiar después de desbloquear. Es una protección contra cambios casuales de la interfaz, no un sistema de autenticación multiusuario ni protección frente a quien controle el navegador. No hay recuperación por correo. Para permisos reales entre usuarios sería necesario un servicio de autenticación.
+
+La configuración de categorías se guarda en IndexedDB dentro de la base local y se incluye en el JSON exportado. La importación ordinaria conserva la configuración local para evitar cambios sin pasar por Administración; los valores importados se conservan y aparecen entre las opciones existentes. El PIN no se incluye en ninguna exportación.

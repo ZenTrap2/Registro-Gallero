@@ -1,0 +1,6 @@
+const KEY='registro-gallero-admin-pin-v1';
+const hex=(bytes:ArrayBuffer|Uint8Array)=>Array.from(new Uint8Array(bytes instanceof Uint8Array?bytes.buffer:bytes)).map(n=>n.toString(16).padStart(2,'0')).join('');
+async function digest(pin:string,salt:Uint8Array){const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(pin),'PBKDF2',false,['deriveBits']);return hex(await crypto.subtle.deriveBits({name:'PBKDF2',salt:salt as BufferSource,iterations:150000,hash:'SHA-256'},key,256))}
+export const hasPIN=()=>!!localStorage.getItem(KEY);
+export async function setPIN(pin:string){if(!/^\d{6,12}$/.test(pin))throw Error('Usa un PIN de 6 a 12 dígitos.');const salt=crypto.getRandomValues(new Uint8Array(16));localStorage.setItem(KEY,JSON.stringify({salt:hex(salt),hash:await digest(pin,salt)}))}
+export async function checkPIN(pin:string){const stored=localStorage.getItem(KEY);if(!stored)return false;const record=JSON.parse(stored);if(!/^[a-f0-9]{32}$/.test(record.salt)||!/^[a-f0-9]{64}$/.test(record.hash))throw Error('El PIN local no se puede leer. Conserva una copia JSON de tus datos.');return await digest(pin,Uint8Array.from(record.salt.match(/.{2}/g) as string[],(v:string)=>parseInt(v,16)))===record.hash}

@@ -1,0 +1,2 @@
+import{getDocument}from'pdfjs-dist/legacy/build/pdf.mjs';import type{jsPDF}from'jspdf';
+export async function pdfText(pdf:jsPDF){const task=getDocument({data:new Uint8Array(pdf.output('arraybuffer')),useSystemFonts:true,isEvalSupported:false});const doc=await task.promise;try{const pages:string[]=[];for(let i=1;i<=doc.numPages;i++){const page=await doc.getPage(i);const content=await page.getTextContent();pages.push(content.items.map(v=>'str'in v?v.str:'').join(' '))}return pages.join('\n')}finally{await task.destroy()}}

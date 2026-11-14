@@ -1,0 +1,2 @@
+import {roosterPaths} from './rooster-art';
+export default function Rooster({className=''}:{className?:string}){return <svg className={className} viewBox="0 0 320 290" fill="none" aria-hidden="true"><ellipse cx="170" cy="268" rx="94" ry="10" fill="#173d30" opacity=".12"/>{roosterPaths.map((p,i)=><path key={i} d={p.d} fill={p.fill} stroke={p.stroke} strokeWidth={p.strokeWidth} strokeLinecap={p.strokeLinecap as 'round'|undefined}/>)}<circle cx="225" cy="77" r="4" fill="#203f34"/></svg>}
