@@ -48,3 +48,7 @@ Mis gallos muestra registros de todos los criaderos por defecto. Más filtros co
 La ficha individual descarga un PDF local con datos, fotos e historial individual de cuidados. También se exportan las fichas de resultados filtrados en Mis gallos. Se genera con jsPDF sin subir información. El PDF es una presentación, no un formato de restauración. JSON incluye todos los criaderos y sus datos; CSV incluye nombre del criadero para restaurar la asociación, pero no ubicación, contacto ni notas del criadero. En importación los criaderos se comparan por nombre y se reasignan los identificadores de sus gallos; se actualizan únicamente tras la confirmación de importar con opción de actualización.
 
 La página Ayuda, en el menú lateral, explica cada función y los formatos de copia de seguridad.
+
+## PL
+
+Campo manual, opcional y editable que cuenta cuántos criaderos ha tenido el gallo, sin registrar sus nombres. No se recalcula al cambiar el criadero actual. Acepta enteros no negativos; vacío significa desconocido y es distinto de cero. Se muestra en lista, ficha y PDF, y se conserva en JSON y en la columna CSV `pl`. Más filtros permite elegir un valor de PL o registros sin datos.
