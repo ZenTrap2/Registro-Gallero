@@ -1,3 +1,4 @@
+import{saveFile}from'./files';
 import {jsPDF} from 'jspdf';
 import {type Database,type Bird,today} from './data';
 import {regular,bold} from './pdf-fonts';
@@ -86,4 +87,4 @@ export function createBirdPDF(birds:Bird[],db:Database){
   }
   const count=pdf.getNumberOfPages();for(let i=1;i<=count;i++){pdf.setPage(i);pdf.setDrawColor(C.line);pdf.setLineWidth(.25);pdf.line(LEFT,282,194,282);const code=pageBirds[i-1].code;const short=pdf.splitTextToSize(code,90)[0];text(`Registro Gallero · ${short}`,LEFT,288,7,C.muted);text(`${i} / ${count}`,182,288,7,C.muted);text('Documento generado localmente · Identificación y cuidados responsables',LEFT,292,6,C.muted)}return pdf;
 }
-export function exportBirdPDF(birds:Bird[],db:Database){const pdf=createBirdPDF(birds,db);const name=birds.length===1?birds[0].code.replace(/[^a-zA-Z0-9_-]/g,'_'):'fichas';pdf.save(`registro-gallero-${name}-${today()}.pdf`)}
+export async function exportBirdPDF(birds:Bird[],db:Database){const pdf=createBirdPDF(birds,db);const name=birds.length===1?birds[0].code.replace(/[^a-zA-Z0-9_-]/g,'_'):'fichas';return saveFile(`registro-gallero-${name}-${today()}.pdf`,new Blob([pdf.output('arraybuffer')],{type:'application/pdf'}))}

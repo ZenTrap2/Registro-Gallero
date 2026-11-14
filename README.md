@@ -64,3 +64,33 @@ La pestaña Administración permite cambiar el nombre de PL y de los catálogos 
 Se crea un PIN local de 6 a 12 dígitos en el primer acceso. El PIN se deriva con PBKDF2-SHA256 y una sal aleatoria; se guarda en localStorage separado de los datos exportados. Se bloquea al salir de la pestaña o tras diez minutos y se puede cambiar después de desbloquear. Es una protección contra cambios casuales de la interfaz, no un sistema de autenticación multiusuario ni protección frente a quien controle el navegador. No hay recuperación por correo. Para permisos reales entre usuarios sería necesario un servicio de autenticación.
 
 La configuración de categorías se guarda en IndexedDB dentro de la base local y se incluye en el JSON exportado. La importación ordinaria conserva la configuración local para evitar cambios sin pasar por Administración; los valores importados se conservan y aparecen entre las opciones existentes. El PIN no se incluye en ninguna exportación.
+
+## Windows y Android
+
+El mismo código React se empaqueta con Electron para Windows x64 y Capacitor para Android 7.0 o posterior (API 24+). La aplicación instalada funciona sin servidor ni cuenta propia. Los registros y fotografías permanecen en IndexedDB dentro de cada instalación. No comparten automáticamente los datos de la versión web: exporta un JSON completo en el origen e impórtalo en el destino.
+
+### Windows
+
+```sh
+npm ci
+npm run build:windows
+```
+
+El ejecutable portable queda en `release/windows/Registro-Gallero-1.0.0-Windows-x64-Portable.exe`. Incluye el navegador necesario y no requiere instalar Node.js. Los datos se guardan en el perfil local de Registro Gallero, no junto al ejecutable. Una dirección interna estable conserva el origen del almacenamiento aunque cambie la carpeta de extracción. Solo los recursos locales de la aplicación pueden abrirse en esa ventana. La compilación no tiene una firma digital comercial.
+
+También se puede generar un instalador NSIS con `npm run build:windows:installer`, preferiblemente desde Windows; para generar el instalador NSIS completo desde Linux se requiere Wine. La versión portable se puede compilar desde Linux sin Wine. Electron mantiene aislado el código web de Node.js y los archivos exportados utilizan el diálogo nativo de guardar.
+
+### Android
+
+Requiere JDK 21 completo (incluido `javac`), Android SDK Platform 36, Build-Tools 35.0.0 y 36.0.0, y las licencias del SDK aceptadas. Configura `ANDROID_HOME` y `JAVA_HOME`, o configura el SDK en Android Studio. El archivo `android/local.properties` es local y no se guarda en Git.
+
+```sh
+npm ci
+npm run build:android
+```
+
+El APK de prueba firmado queda en `android/app/build/outputs/apk/debug/app-debug.apk`. Para abrir el proyecto en Android Studio: `npm run android:sync` y `npm run android:open`. El APK de prueba sirve para instalar directamente en un dispositivo; no es una publicación de Google Play. Una publicación de producción requiere una clave de firma propia y conservarla para futuras actualizaciones. No se incluyen claves de firma ni PIN en el repositorio.
+
+En Android, PDF, JSON y CSV se preparan en la caché privada y se ofrecen mediante el selector nativo de guardar/compartir. La selección de fotografías y archivos utiliza el selector del sistema. No se habilitan copias automáticas externas de los datos de la app. Exporta un JSON antes de desinstalar, cambiar la firma de una compilación o borrar sus datos.
+
+Los binarios nativos son independientes del despliegue web. `npm run build` continúa generando la web en `dist/`; `release/`, el SDK, las cachés, las claves y los resultados de Gradle se excluyen de Git.

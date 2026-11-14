@@ -1,1 +1,49 @@
-{"name":"registro-gallero","version":"1.0.0","private":true,"type":"module","scripts":{"dev":"vite --host 0.0.0.0","build":"tsc -b && vite build","test":"vitest run"},"dependencies":{"jspdf":"^4.2.1","lucide-react":"^0.468.0","react":"^19.0.0","react-dom":"^19.0.0"},"devDependencies":{"@types/react":"^19.0.0","@types/react-dom":"^19.0.0","@vitejs/plugin-react":"^4.3.4","fake-indexeddb":"^6.0.0","pdfjs-dist":"^6.5.438","typescript":"~5.7.2","vite":"^6.0.5","vitest":"^3.0.0"}}
+{
+  "name": "registro-gallero",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc -b && vite build",
+    "test": "vitest run",
+    "desktop:dev": "npm run build && electron .",
+    "build:windows": "npm run build && node scripts/build-windows.mjs",
+    "android:sync": "npm run build && cap sync android",
+    "android:open": "cap open android",
+    "build:android": "npm run android:sync && node scripts/build-android.mjs",
+    "build:windows:installer": "npm run build && node scripts/build-windows.mjs --installer",
+    "package:downloads": "node scripts/package-downloads.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.6.2",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/share": "^8.0.3",
+    "jspdf": "^4.2.1",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.2",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0",
+    "fake-indexeddb": "^6.0.0",
+    "pdfjs-dist": "^6.5.438",
+    "typescript": "~5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^3.0.0"
+  },
+  "description": "Identificación, genealogía y cuidados responsables, con almacenamiento local.",
+  "author": "Registro Gallero",
+  "main": "desktop/main.cjs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ZenTrap2/Registro-Gallero.git"
+  }
+}

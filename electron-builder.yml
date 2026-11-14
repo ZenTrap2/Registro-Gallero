@@ -1,0 +1,29 @@
+appId: com.registrogallero.app
+productName: Registro Gallero
+artifactName: Registro-Gallero-${version}-Windows-${arch}.${ext}
+asar: true
+directories:
+  app: release/desktop-stage
+  output: release/windows
+files:
+  - dist/**/*
+  - '!dist/downloads/**/*'
+  - desktop/**/*
+  - build/icon.png
+  - package.json
+win:
+  icon: build/icon.ico
+  target:
+    - target: portable
+      arch: [x64]
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false
+
+portable:
+  artifactName: Registro-Gallero-${version}-Windows-x64-Portable.exe
