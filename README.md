@@ -94,3 +94,7 @@ El APK de prueba firmado queda en `android/app/build/outputs/apk/debug/app-debug
 En Android, PDF, JSON y CSV se preparan en la caché privada y se ofrecen mediante el selector nativo de guardar/compartir. La selección de fotografías y archivos utiliza el selector del sistema. No se habilitan copias automáticas externas de los datos de la app. Exporta un JSON antes de desinstalar, cambiar la firma de una compilación o borrar sus datos.
 
 Los binarios nativos son independientes del despliegue web. `npm run build` continúa generando la web en `dist/`; `release/`, el SDK, las cachés, las claves y los resultados de Gradle se excluyen de Git.
+
+### Página de descarga
+
+Después de compilar ambas plataformas, `npm run package:downloads` crea `dist/downloads/`. Para respetar el límite de archivos del alojamiento, divide el ejecutable de Windows en partes de 24 MiB. La página las reúne en memoria, valida tamaño y SHA-256, y entrega un solo `.exe`. Android se descarga directamente. La página muestra el progreso y explica los fallos. Los archivos nativos no se guardan en Git; los genera la compilación.
