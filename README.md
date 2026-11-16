@@ -31,7 +31,7 @@ Los datos son propios de cada navegador y dispositivo; borrar los datos del siti
 ## Organización
 
 - `src/data.ts`: tipos, IndexedDB, CSV, validación y combinación de importaciones.
-- `src/main.tsx`: navegación, componentes reutilizables, formularios y pantallas.
+- `src/main.tsx`: arranque de React; `src/App.tsx`: pantallas, formularios y coordinación de datos.
 - `src/style.css`: paleta, diseño responsive y estilos accesibles.
 - `tests/data.test.ts`: persistencia, portabilidad y manejo de duplicados.
 
@@ -98,3 +98,13 @@ Los binarios nativos son independientes del despliegue web. `npm run build` cont
 ### Página de descarga
 
 Después de compilar ambas plataformas, `npm run package:downloads` crea `dist/downloads/`. Para respetar el límite de archivos del alojamiento, divide el ejecutable de Windows en partes de 24 MiB. La página las reúne en memoria, valida tamaño y SHA-256, y entrega un solo `.exe`. Android se descarga directamente. La página muestra el progreso y explica los fallos. Los archivos nativos no se guardan en Git; los genera la compilación.
+
+## Interfaz adaptable y validación
+
+La interfaz utiliza el alto visible del dispositivo y zonas seguras de pantalla, con controles táctiles de al menos 44 px y campos de 16 px en teléfonos. En pantallas estrechas y tabletas táctiles, la navegación se abre en un diálogo que mantiene el foco y bloquea el desplazamiento del fondo. Los registros se muestran como tarjetas en móvil y como tabla en escritorio, con paginación de veinte registros para listas largas. Los filtros se reinician al navegar y solo afectan al listado de Mis gallos.
+
+Los formularios pasan a una columna en teléfonos. Sus encabezados y acciones permanecen accesibles con desplazamiento interno; los avisos se muestran en el diálogo superior, incluso en confirmaciones anidadas. Los cambios de altura del teclado actualizan el espacio disponible. La configuración Android de Capacitor utiliza gestión nativa de insets, `viewport-fit=cover`, barras claras y `adjustResize`; estos cambios nativos se aplican al generar el siguiente APK.
+
+La búsqueda ignora acentos y espacios alrededor del texto. La importación valida fechas reales, identificadores repetidos, seguimientos y parentescos. CSV incluye ahora el identificador propio de cada registro para conservar los vínculos de linaje al restaurarlo. Los archivos antiguos continúan aceptándose cuando contienen los campos obligatorios. Una importación que genere ciclos con registros existentes se detiene sin modificar los datos previos.
+
+Las pruebas de interacción en `tests/ui.test.tsx` usan jsdom y cubren navegación, filtros, edición, errores de almacenamiento, confirmaciones, paginación, métricas del teclado y el botón Atrás de Android. Estas pruebas no reemplazan una comprobación visual en un teléfono real.
