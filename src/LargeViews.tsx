@@ -1,3 +1,4 @@
+import { ancestorAt } from "./ancestry";
 import { useMemo } from "react";
 import {
   GitFork,
@@ -52,7 +53,8 @@ export function LineageView({
                 <GitFork size={22} />
               </div>
               {(["father", "mother"] as const).map((key, i) => {
-                const p = byId.get(b[key]);
+                const info = ancestorAt(b, key === "father" ? "f" : "m", byId);
+                const p = info?.birdId ? byId.get(info.birdId) : undefined;
                 return (
                   <div className="lineage-parent" key={key}>
                     <span>{i ? "Madre" : "Padre"}</span>
@@ -65,7 +67,7 @@ export function LineageView({
                         <ArrowUpRight size={14} />
                       </button>
                     ) : (
-                      <small>Sin datos registrados</small>
+                      <small>{info?.name || "Sin datos registrados"}</small>
                     )}
                   </div>
                 );

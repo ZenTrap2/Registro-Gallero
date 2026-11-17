@@ -1,3 +1,13 @@
+import { AncestryFields, Pedigree } from "./AncestryFields";
+import {
+  type AncestorEntry,
+  ancestorLabel,
+  ancestryCycle,
+  detachAncestor,
+} from "./ancestry";
+import { CustomFieldInputs } from "./CustomFields";
+import { validateCustomValues } from "./custom-fields";
+import { type ImportDecisions } from "./import-duplicates";
 import { Photo } from "./Photo";
 import { LineageView, HealthEventList } from "./LargeViews";
 import { ImportPreview } from "./ImportPreview";
@@ -122,7 +132,7 @@ export default function App() {
     [preview, setPreview] = useState<ReturnType<typeof validateImport> | null>(
       null,
     ),
-    [mode, setMode] = useState("skip"),
+    [importDecisions, setImportDecisions] = useState<ImportDecisions>({}),
     [loadVersion, setLoadVersion] = useState(0),
     [extraFilters, setExtraFilters] = useState({
       farmId: "",
@@ -338,6 +348,7 @@ export default function App() {
     format: "json" | "csv" | "pdf",
     data: TransferData,
     includePhotos = true,
+    includeAncestorDetails = false,
   ) {
     setBusy(true);
     setError("");
@@ -352,7 +363,7 @@ export default function App() {
         const result = await exportBirdPDF(
           data.birds,
           { ...db, events: data.events },
-          { includePhotos, onProgress: setOperation },
+          { includePhotos, includeAncestorDetails, onProgress: setOperation },
         );
         setToast(fileSuccess(result));
       } else {
@@ -409,6 +420,7 @@ export default function App() {
       const result = await session.parse(file);
       if (importSession.current !== session) return;
       setPreview(result);
+      setImportDecisions({});
       setImportRows(new Set(result.birds.map((b) => b.id)));
     } catch (e) {
       if (importSession.current === session)
@@ -424,14 +436,14 @@ export default function App() {
     if (!preview) return;
     setConfirm({
       title: "¿Incorporar los datos revisados?",
-      note: `Se revisarán ${importRows.size} gallos seleccionados. ${mode === "update" ? "Los códigos duplicados y sus criaderos vinculados se actualizarán con los datos del archivo." : "Los códigos duplicados se omitirán."} Los demás registros se conservarán.`,
+      note: `Se revisarán ${importRows.size} gallos seleccionados con tus decisiones de omitir, reemplazar o conservar ambos. Reemplazar cambia los datos y fotos del destino elegido; conservar ambos crea otro ID sin cambiar nombres ni placas. Los demás registros y criaderos se conservarán.`,
       run: async () => {
         setBusy(true);
         try {
           const incoming = await importSession.current!.selected(importRows);
           if (
             await save(
-              mergeImport(db, incoming, mode),
+              mergeImport(db, incoming, importDecisions),
               "Importación completada.",
             )
           )
@@ -658,7 +670,11 @@ export default function App() {
                         <h2>Información del registro</h2>
                         <button
                           className="btn"
-                          onClick={() => downloadPDF([active])}
+                          onClick={() => {
+                            setSelectedRows(new Set([active.id]));
+                            setExportScope("selected");
+                            setExportOpen(true);
+                          }}
                         >
                           <Download size={15} />
                           Exportar ficha PDF
@@ -689,7 +705,8 @@ export default function App() {
                       </div>
                       <dl>
                         {[
-                          ["Código", active.code],
+                          ["Código / placa", active.code],
+                          ["ID interno", active.id],
                           [
                             "Criadero",
                             db.farms?.find((f) => f.id === active.farmId)?.name,
@@ -711,6 +728,9 @@ export default function App() {
                           ["Fecha de ingreso", fmt(active.arrival)],
                           [cfg.catalogs.status.label, active.status],
                           ["Última revisión", fmt(active.lastReview)],
+                          ...(cfg.customFields || [])
+                            .filter((f) => f.active !== false)
+                            .map((f) => [f.label, active.customValues?.[f.id]]),
                         ].map(([k, v]) => (
                           <div key={k}>
                             <dt>{k}</dt>
@@ -727,7 +747,7 @@ export default function App() {
                         onClick={() =>
                           setConfirm({
                             title: `¿Eliminar a ${active.name}?`,
-                            note: "Se eliminarán su ficha, fotografías y eventos. Las referencias de parentesco se quitarán de otras fichas.",
+                            note: "Se eliminarán su ficha y eventos. El linaje documentado de sus descendientes se conservará como información manual, incluidas sus fotos de ancestro.",
                             run: async () => {
                               if (
                                 await save(
@@ -735,17 +755,13 @@ export default function App() {
                                     ...db,
                                     birds: db.birds
                                       .filter((b) => b.id !== active.id)
-                                      .map((b) => ({
-                                        ...b,
-                                        father:
-                                          b.father === active.id
-                                            ? ""
-                                            : b.father,
-                                        mother:
-                                          b.mother === active.id
-                                            ? ""
-                                            : b.mother,
-                                      })),
+                                      .map((b) =>
+                                        detachAncestor(
+                                          b,
+                                          active.id,
+                                          indexes.byId,
+                                        ),
+                                      ),
                                     events: db.events.filter(
                                       (e) => e.birdId !== active.id,
                                     ),
@@ -767,33 +783,11 @@ export default function App() {
                         <h2>
                           <GitFork size={20} /> Sus raíces
                         </h2>
-                        {["father", "mother"].map((key, i) => {
-                          const b = indexes.byId.get(
-                            active[key as "father" | "mother"],
-                          );
-                          return (
-                            <div className="parent" key={key}>
-                              <small>{i ? "MADRE" : "PADRE"}</small>
-                              {b ? (
-                                <button
-                                  className="bird-link"
-                                  onClick={() => setSelected(b.id)}
-                                >
-                                  <span className="avatar">
-                                    <Rooster />
-                                  </span>
-                                  <span>
-                                    <strong>{b.name}</strong>
-                                    <small>{b.code}</small>
-                                  </span>
-                                  <ArrowUpRight size={18} />
-                                </button>
-                              ) : (
-                                <p>Sin datos registrados</p>
-                              )}
-                            </div>
-                          );
-                        })}
+                        <Pedigree
+                          bird={active}
+                          birds={db.birds}
+                          open={setSelected}
+                        />
                       </section>
                       <section className="panel">
                         <div className="section-head">
@@ -1275,8 +1269,8 @@ export default function App() {
                 db={db}
                 selected={importRows}
                 change={setImportRows}
-                mode={mode}
-                setMode={setMode}
+                decisions={importDecisions}
+                setDecisions={setImportDecisions}
                 confirm={confirmImport}
                 cancel={closeImport}
                 busy={busy}
@@ -1302,8 +1296,10 @@ function BirdForm({
   close,
   submit,
   busy,
+  ancestorMode = false,
 }: {
   bird: Bird;
+  ancestorMode?: boolean;
   birds: Bird[];
   farms: Farm[];
   close: () => void;
@@ -1313,7 +1309,12 @@ function BirdForm({
   const cfg = useSettings();
   const [b, setB] = useState({ ...bird, photos: [...bird.photos] }),
     [err, setErr] = useState(""),
-    [uploading, setUploading] = useState(false);
+    [uploading, setUploading] = useState(false),
+    [allowDuplicate, setAllowDuplicate] = useState(false),
+    [ancestorEdit, setAncestorEdit] = useState<{
+      path: string;
+      entry: AncestorEntry;
+    } | null>(null);
   const field = (key: keyof Bird, value: string) =>
     setB((x) => ({ ...x, [key]: value }));
   async function photos(files: FileList | null) {
@@ -1368,9 +1369,11 @@ function BirdForm({
   return (
     <Modal
       title={
-        birds.some((x) => x.id === b.id)
-          ? "Editar registro"
-          : "Registrar un gallo"
+        ancestorMode
+          ? "Detalles del ancestro"
+          : birds.some((x) => x.id === b.id)
+            ? "Editar registro"
+            : "Registrar un gallo"
       }
       close={close}
       busy={busy}
@@ -1379,18 +1382,22 @@ function BirdForm({
         onSubmit={async (e) => {
           e.preventDefault();
           setErr("");
-          if (!b.name.trim() || !b.code.trim()) {
+          if (!b.name.trim() || (!ancestorMode && !b.code.trim())) {
             setErr("Completa el nombre y el código.");
             return;
           }
           if (
+            !ancestorMode &&
+            !allowDuplicate &&
             birds.some(
               (x) =>
                 x.id !== b.id &&
                 x.code.trim().toLowerCase() === b.code.trim().toLowerCase(),
             )
           ) {
-            setErr("Ese código ya existe. Elige un código único.");
+            setErr(
+              "Ese código ya existe. Confirma que se trata de otro animal para conservar ambos.",
+            );
             return;
           }
           if (
@@ -1400,6 +1407,12 @@ function BirdForm({
           ) {
             setErr(
               "Revisa los progenitores: no pueden coincidir ni crear un ciclo en el linaje.",
+            );
+            return;
+          }
+          if (ancestryCycle([...birds.filter((x) => x.id !== b.id), b])) {
+            setErr(
+              "El linaje crearía un ciclo. Revisa los ancestros vinculados.",
             );
             return;
           }
@@ -1425,6 +1438,12 @@ function BirdForm({
             );
             return;
           }
+          try {
+            validateCustomValues(b.customValues, cfg.customFields || []);
+          } catch (error) {
+            setErr((error as Error).message);
+            return;
+          }
           await submit({ ...b, name: b.name.trim(), code: b.code.trim() });
         }}
       >
@@ -1435,29 +1454,39 @@ function BirdForm({
         <div className="form-grid">
           {[
             ["name", "Nombre *", "text"],
-            ["code", "Código único *", "text"],
+            [
+              "code",
+              ancestorMode ? "Código / placa (opcional)" : "Código / placa *",
+              "text",
+            ],
             ["birth", "Fecha de nacimiento", "date"],
             ["age", "Edad aproximada (si no conoces la fecha)", "text"],
             ["breed", cfg.catalogs.breed.label, "text"],
             ["color", cfg.catalogs.color.label, "text"],
             ["origin", "Procedencia (opcional)", "text"],
             ["mark", "Marca o identificación visible (opcional)", "text"],
-          ].map(([k, label, type]) => (
-            <label key={k}>
-              {label}
-              <input
-                required={["name", "code"].includes(k)}
-                maxLength={150}
-                list={
-                  ["breed", "color"].includes(k) ? `options-${k}` : undefined
-                }
-                type={type}
-                max={type === "date" ? today() : undefined}
-                value={String(b[k as keyof Bird] ?? "")}
-                onChange={(e) => field(k as keyof Bird, e.target.value)}
-              />
-            </label>
-          ))}
+          ]
+            .filter(
+              ([k]) =>
+                !(k === "breed" || k === "color") ||
+                cfg.catalogs[k].active !== false,
+            )
+            .map(([k, label, type]) => (
+              <label key={k}>
+                {label}
+                <input
+                  required={k === "name" || (k === "code" && !ancestorMode)}
+                  maxLength={150}
+                  list={
+                    ["breed", "color"].includes(k) ? `options-${k}` : undefined
+                  }
+                  type={type}
+                  max={type === "date" ? today() : undefined}
+                  value={String(b[k as keyof Bird] ?? "")}
+                  onChange={(e) => field(k as keyof Bird, e.target.value)}
+                />
+              </label>
+            ))}
           <datalist id="options-breed">
             {cfg.catalogs.breed.options.map((v) => (
               <option key={v} value={v} />
@@ -1485,18 +1514,20 @@ function BirdForm({
               Crea o edita los criaderos en la pestaña «Criaderos».
             </small>
           </label>
-          <label>
-            {cfg.catalogs.purpose.label} (opcional)
-            <select
-              value={b.purpose || ""}
-              onChange={(e) => field("purpose", e.target.value)}
-            >
-              <option value="">Sin datos registrados</option>
-              {cfg.catalogs.purpose.options.map((p) => (
-                <option key={p}>{p}</option>
-              ))}
-            </select>
-          </label>
+          {cfg.catalogs.purpose.active !== false && (
+            <label>
+              {cfg.catalogs.purpose.label} (opcional)
+              <select
+                value={b.purpose || ""}
+                onChange={(e) => field("purpose", e.target.value)}
+              >
+                <option value="">Sin datos registrados</option>
+                {cfg.catalogs.purpose.options.map((p) => (
+                  <option key={p}>{p}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <label>
             {cfg.plLabel} (opcional)
             <input
@@ -1526,27 +1557,6 @@ function BirdForm({
               onChange={(e) => field("weightKg", e.target.value)}
             />
           </label>
-          {[
-            ["father", "Padre"],
-            ["mother", "Madre"],
-          ].map(([k, label]) => (
-            <label key={k}>
-              {label}
-              <select
-                value={b[k as "father" | "mother"]}
-                onChange={(e) => field(k as keyof Bird, e.target.value)}
-              >
-                <option value="">Sin datos registrados</option>
-                {birds
-                  .filter((x) => x.id !== b.id)
-                  .map((x) => (
-                    <option value={x.id} key={x.id}>
-                      {x.name} · {x.code}
-                    </option>
-                  ))}
-              </select>
-            </label>
-          ))}
           <label>
             Fecha de ingreso
             <input
@@ -1556,17 +1566,19 @@ function BirdForm({
               onChange={(e) => field("arrival", e.target.value)}
             />
           </label>
-          <label>
-            {cfg.catalogs.status.label}
-            <select
-              value={b.status}
-              onChange={(e) => field("status", e.target.value)}
-            >
-              {cfg.catalogs.status.options.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-          </label>
+          {cfg.catalogs.status.active !== false && (
+            <label>
+              {cfg.catalogs.status.label}
+              <select
+                value={b.status}
+                onChange={(e) => field("status", e.target.value)}
+              >
+                {cfg.catalogs.status.options.map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <label>
             Última revisión
             <input
@@ -1576,6 +1588,20 @@ function BirdForm({
               onChange={(e) => field("lastReview", e.target.value)}
             />
           </label>
+        </div>
+        {!ancestorMode && (
+          <AncestryFields
+            bird={b}
+            birds={birds}
+            change={setB}
+            details={(path, entry) => setAncestorEdit({ path, entry })}
+          />
+        )}
+        <div className="form-grid">
+          <CustomFieldInputs
+            bird={b}
+            change={(customValues) => setB({ ...b, customValues })}
+          />
         </div>
         <label className="full-label">
           Notas generales
@@ -1587,6 +1613,20 @@ function BirdForm({
             placeholder="Identificación, alojamiento o cuidados que quieras recordar…"
           />
         </label>
+        {birds.some(
+          (x) =>
+            x.id !== b.id &&
+            x.code.trim().toLowerCase() === b.code.trim().toLowerCase(),
+        ) && (
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={allowDuplicate}
+              onChange={(e) => setAllowDuplicate(e.target.checked)}
+            />
+            Confirmo que es otro animal y quiero conservar la misma placa/código
+          </label>
+        )}
         <h3>Fotos (opcional)</h3>
         <label
           className="drop-zone"
@@ -1645,6 +1685,31 @@ function BirdForm({
           </button>
         </div>
       </form>
+      {ancestorEdit && (
+        <BirdForm
+          ancestorMode
+          bird={{
+            ...emptyBird(),
+            ...ancestorEdit.entry.details,
+            name: ancestorEdit.entry.name,
+          }}
+          birds={birds}
+          farms={farms}
+          busy={busy}
+          close={() => setAncestorEdit(null)}
+          submit={async (details) => {
+            const { ancestry: ignored, ...snapshot } = details;
+            setB((previous) => ({
+              ...previous,
+              ancestry: {
+                ...previous.ancestry,
+                [ancestorEdit.path]: { name: details.name, details: snapshot },
+              },
+            }));
+            setAncestorEdit(null);
+          }}
+        />
+      )}
     </Modal>
   );
 }
@@ -1693,17 +1758,19 @@ function EventForm({
               ))}
             </select>
           </label>
-          <label>
-            {cfg.catalogs.eventType.label} *
-            <select
-              value={e.type}
-              onChange={(x) => setE({ ...e, type: x.target.value })}
-            >
-              {cfg.catalogs.eventType.options.map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
-          </label>
+          {cfg.catalogs.eventType.active !== false && (
+            <label>
+              {cfg.catalogs.eventType.label} *
+              <select
+                value={e.type}
+                onChange={(x) => setE({ ...e, type: x.target.value })}
+              >
+                {cfg.catalogs.eventType.options.map((t) => (
+                  <option key={t}>{t}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <label>
             Fecha *
             <input

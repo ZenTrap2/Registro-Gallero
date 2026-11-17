@@ -24,9 +24,11 @@ export function ExportDialog({
     format: "json" | "csv" | "pdf",
     data: TransferData,
     includePhotos: boolean,
+    includeAncestorDetails?: boolean,
   ) => Promise<void>;
   busy: boolean;
 }) {
+  const [ancestorDetails, setAncestorDetails] = useState(false);
   const [scope, setScope] = useState(initialScope),
     [limit, setLimit] = useState(""),
     [photos, setPhotos] = useState(
@@ -142,6 +144,19 @@ export function ExportDialog({
         />
         Incluir fotografías en el PDF
       </label>
+      <label className="checkbox">
+        <input
+          type="checkbox"
+          checked={ancestorDetails}
+          disabled={busy}
+          onChange={(e) => setAncestorDetails(e.target.checked)}
+        />
+        Incluir detalles de los ancestros en el PDF
+      </label>
+      <p className="help">
+        Los nombres del linaje se incluyen siempre. Los detalles adicionales de
+        padres y ancestros se omiten salvo que actives esta opción.
+      </p>
       {candidates.length > 100 && (
         <p className="help">
           Para lotes grandes se propone un PDF sin fotografías para reducir
@@ -152,7 +167,7 @@ export function ExportDialog({
       <button
         className="export-option"
         disabled={busy || !valid || !n}
-        onClick={() => run("pdf", data, photos)}
+        onClick={() => run("pdf", data, photos, ancestorDetails)}
       >
         <Download />
         <span>

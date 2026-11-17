@@ -228,7 +228,10 @@ describe("Flujos de interfaz en teléfono", () => {
     await user.click(screen.getByRole("button", { name: "Registrar gallo" }));
     const dialog = screen.getByRole("dialog", { name: "Registrar un gallo" });
     await user.type(within(dialog).getByLabelText("Nombre *"), "Nuevo");
-    await user.type(within(dialog).getByLabelText("Código único *"), "rg-001");
+    await user.type(
+      within(dialog).getByLabelText("Código / placa *"),
+      "rg-001",
+    );
     await user.click(
       within(dialog).getByRole("button", { name: "Guardar registro" }),
     );
@@ -502,4 +505,183 @@ it("importa exactamente 37 de 1100 gallos después de revisar y confirmar", asyn
   );
   await waitFor(() => expect(mocks.write).toHaveBeenCalled());
   expect(mocks.write.mock.calls.at(-1)![0].birds).toHaveLength(39);
+});
+it("revisa coincidencia por nombre y conserva ambos animales sin alterar las placas", async () => {
+  await ready();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Importar datos" }));
+  const dialog = screen.getByRole("dialog", { name: "Importar datos" });
+  const data = {
+    birds: [{ ...emptyBird(), id: "source", name: "Canelo", code: "OTRA" }],
+    events: [],
+  };
+  const text = JSON.stringify(data),
+    file = new File([text], "duplicado.json", { type: "application/json" });
+  Object.defineProperty(file, "text", { value: async () => text });
+  await user.upload(
+    within(dialog).getByLabelText("Seleccionar archivo JSON o CSV"),
+    file,
+  );
+  const confirm = await within(dialog).findByRole("button", {
+    name: "Confirmar importación",
+  });
+  expect((confirm as HTMLButtonElement).disabled).toBe(true);
+  await user.selectOptions(
+    within(dialog).getByLabelText("Decisión para Canelo"),
+    "keep",
+  );
+  expect((confirm as HTMLButtonElement).disabled).toBe(false);
+  await user.click(confirm);
+  await user.click(
+    within(
+      screen.getByRole("dialog", { name: "¿Incorporar los datos revisados?" }),
+    ).getByRole("button", { name: "Confirmar", exact: true }),
+  );
+  await waitFor(() => expect(mocks.write).toHaveBeenCalled());
+  const saved = mocks.write.mock.calls.at(-1)![0];
+  expect(saved.birds).toHaveLength(3);
+  expect(saved.birds.filter((b: any) => b.name === "Canelo")).toHaveLength(2);
+  expect(saved.birds[2].code).toBe("OTRA");
+  expect(saved.birds[2].id).not.toBe("bird-1");
+});
+it("hereda abuelos del padre registrado y guarda detalles de la madre manual sin crear otra ficha", async () => {
+  const base = seed(),
+    pepe = {
+      ...emptyBird(),
+      id: "pepe",
+      name: "Pepe",
+      code: "P",
+      father: "juanito",
+      mother: "juanita",
+    },
+    juanito = { ...emptyBird(), id: "juanito", name: "Juanito", code: "J" },
+    juanita = { ...emptyBird(), id: "juanita", name: "Juanita", code: "K" };
+  mocks.read.mockResolvedValue({
+    ...base,
+    birds: [...base.birds, pepe, juanito, juanita],
+  });
+  await ready();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Registrar gallo" }));
+  const dialog = screen.getByRole("dialog", { name: "Registrar un gallo" });
+  await user.type(within(dialog).getByLabelText("Nombre *"), "Claudio");
+  await user.type(within(dialog).getByLabelText("Código / placa *"), "C");
+  const father = within(dialog)
+    .getByLabelText("Padre", { exact: true })
+    .closest(".ancestor-field")!;
+  await user.click(
+    within(father as HTMLElement).getByRole("button", {
+      name: "Añadir desde el registro",
+    }),
+  );
+  await user.click(
+    within(father as HTMLElement).getByRole("button", { name: /Pepe · P/ }),
+  );
+  expect(
+    (within(dialog).getByLabelText("Padre de padre") as HTMLInputElement).value,
+  ).toBe("Juanito");
+  expect(
+    (within(dialog).getByLabelText("Madre de padre") as HTMLInputElement).value,
+  ).toBe("Juanita");
+  const mother = within(dialog)
+    .getByLabelText("Madre", { exact: true })
+    .closest(".ancestor-field")!;
+  await user.type(
+    within(mother as HTMLElement).getByRole("textbox", {
+      name: "Madre",
+      exact: true,
+    }),
+    "Clara",
+  );
+  await user.click(
+    within(mother as HTMLElement).getByRole("button", {
+      name: "Añadir detalles",
+    }),
+  );
+  const details = screen.getByRole("dialog", { name: "Detalles del ancestro" });
+  await user.type(
+    within(details).getByLabelText("Notas generales"),
+    "Procedencia conocida",
+  );
+  await user.click(
+    within(details).getByRole("button", { name: "Guardar registro" }),
+  );
+  await user.click(
+    within(dialog).getByRole("button", { name: "Guardar registro" }),
+  );
+  await waitFor(() => expect(mocks.write).toHaveBeenCalled());
+  const saved = mocks.write.mock.calls.at(-1)![0];
+  expect(saved.birds).toHaveLength(6);
+  const child = saved.birds.at(-1);
+  expect(child.father).toBe("pepe");
+  expect(child.ancestry.m.name).toBe("Clara");
+  expect(child.ancestry.m.details.notes).toBe("Procedencia conocida");
+  expect(child.ancestry.m.details.code).toBe("");
+});
+it("muestra categorías adicionales activas y conserva valores de categorías retiradas al editar", async () => {
+  const db = seed();
+  db.birds[0].customValues = { corral: "Norte", retirada: "Valor anterior" };
+  db.settings = {
+    ...(await import("../src/settings")).getSettings(db),
+    customFields: [
+      { id: "corral", label: "Corral asignado", type: "text", options: [] },
+      {
+        id: "retirada",
+        label: "Campo retirado",
+        type: "text",
+        options: [],
+        active: false,
+      },
+    ],
+  };
+  mocks.read.mockResolvedValue(db);
+  await ready();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Editar Canelo" }));
+  const dialog = screen.getByRole("dialog", { name: "Editar registro" });
+  expect(
+    within(dialog).queryByLabelText("Campo retirado (opcional)"),
+  ).toBeNull();
+  const value = within(dialog).getByLabelText("Corral asignado (opcional)");
+  await user.clear(value);
+  await user.type(value, "Sur");
+  await user.click(
+    within(dialog).getByRole("button", { name: "Guardar registro" }),
+  );
+  await waitFor(() => expect(mocks.write).toHaveBeenCalled());
+  expect(mocks.write.mock.calls.at(-1)![0].birds[0].customValues).toEqual({
+    corral: "Sur",
+    retirada: "Valor anterior",
+  });
+});
+it("crea y confirma una categoría adicional numérica desde el editor de Administración", async () => {
+  const { CustomCategories } = await import("../src/CustomFields"),
+    save = vi.fn().mockResolvedValue(true),
+    db = seed(),
+    user = userEvent.setup();
+  render(<CustomCategories db={db} save={save} busy={false} />);
+  await user.click(
+    screen.getByRole("button", { name: "Añadir categoría de registro" }),
+  );
+  await user.type(
+    screen.getByLabelText("Nombre de la categoría adicional"),
+    "Anillo secundario",
+  );
+  await user.selectOptions(screen.getByLabelText("Tipo de dato"), "integer");
+  await user.click(
+    screen.getByRole("button", { name: "Revisar categorías adicionales" }),
+  );
+  expect(save).not.toHaveBeenCalled();
+  const confirmation = screen.getByRole("dialog", {
+    name: "¿Guardar categorías adicionales?",
+  });
+  await user.click(
+    within(confirmation).getByRole("button", { name: "Guardar categorías" }),
+  );
+  await waitFor(() => expect(save).toHaveBeenCalledOnce());
+  expect(save.mock.calls[0][0].settings.customFields[0]).toMatchObject({
+    label: "Anillo secundario",
+    type: "integer",
+    active: true,
+  });
 });

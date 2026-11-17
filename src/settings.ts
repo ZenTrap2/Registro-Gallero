@@ -1,11 +1,18 @@
+import { allDetailBirds } from "./ancestry";
+import {
+  type CustomField,
+  validateCustomDefinitions,
+  validateCustomValues,
+} from "./custom-fields";
 import type { Database } from "./data";
 export type CatalogKey = "purpose" | "status" | "breed" | "color" | "eventType";
-export type Catalog = { label: string; options: string[] };
+export type Catalog = { label: string; options: string[]; active?: boolean };
 export type AppSettings = {
   plLabel: string;
   catalogs: Record<CatalogKey, Catalog>;
   healthyStates: string[];
   controlTypes: string[];
+  customFields?: CustomField[];
 };
 export const catalogKeys: CatalogKey[] = [
   "purpose",
@@ -56,7 +63,7 @@ export function getSettings(db: Database): AppSettings {
     const values =
       key === "eventType"
         ? db.events.map((e) => e.type)
-        : db.birds.map((b) => b[key] || "");
+        : allDetailBirds(db.birds).map((b) => b[key] || "");
     settings.catalogs[key].options = [
       ...new Set([
         ...settings.catalogs[key].options,
@@ -74,6 +81,7 @@ export function validateSettings(s: AppSettings) {
     s.plLabel.length > 60
   )
     throw Error("El nombre de PL debe tener entre 1 y 60 caracteres.");
+  validateCustomDefinitions(s.customFields || []);
   for (const k of catalogKeys) {
     const c = s.catalogs?.[k];
     if (
@@ -111,7 +119,7 @@ export function applySettings(
     const values =
       k === "eventType"
         ? db.events.map((e) => e.type)
-        : db.birds.map((b) => b[k] || "");
+        : allDetailBirds(db.birds).map((b) => b[k] || "");
     for (const value of values.filter(Boolean)) {
       const next = renames[k]?.[value] ?? value;
       if (!clean.catalogs[k].options.includes(next))
@@ -126,10 +134,36 @@ export function applySettings(
   clean.controlTypes = clean.controlTypes
     .map((v) => renames.eventType?.[v] ?? v)
     .filter((v) => clean.catalogs.eventType.options.includes(v));
-  const birds = db.birds.map((b) => {
+  for (const field of clean.customFields || []) {
+    const old = db.settings?.customFields?.find((f) => f.id === field.id);
+    if (old && old.type !== field.type)
+      throw Error(
+        `El tipo de «${field.label}» es fijo. Crea otra categoría para usar otro tipo.`,
+      );
+  }
+  const retained = new Set((clean.customFields || []).map((f) => f.id));
+  for (const old of db.settings?.customFields || [])
+    if (!retained.has(old.id))
+      throw Error(
+        "Retira la categoría en lugar de borrar su definición para conservar los valores existentes.",
+      );
+  for (const bird of allDetailBirds(db.birds))
+    validateCustomValues(bird.customValues, clean.customFields || []);
+  const renameBird = (b: import("./data").Bird) => {
     const next = { ...b };
     for (const k of ["purpose", "status", "breed", "color"] as const)
       if (next[k] && renames[k]?.[next[k]!]) next[k] = renames[k]![next[k]!]!;
+    return next;
+  };
+  const birds = db.birds.map((b) => {
+    const next = renameBird(b);
+    if (next.ancestry)
+      next.ancestry = Object.fromEntries(
+        Object.entries(next.ancestry).map(([path, a]) => [
+          path,
+          { ...a, ...(a.details ? { details: renameBird(a.details) } : {}) },
+        ]),
+      );
     return next;
   });
   const events = db.events.map((e) => ({

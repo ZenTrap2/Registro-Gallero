@@ -1,3 +1,17 @@
+import {
+  type AncestorEntry,
+  ancestorAt,
+  allBirdPhotos,
+  ancestryCycle,
+  withoutPhotos,
+} from "./ancestry";
+import { getSettings } from "./settings";
+import {
+  validateCustomDefinitions,
+  validateCustomValues,
+  type CustomField,
+} from "./custom-fields";
+import { duplicateIndex, type ImportDecisions } from "./import-duplicates";
 import type { AppSettings } from "./settings";
 export type HealthEvent = {
   id: string;
@@ -30,6 +44,8 @@ export type Bird = {
   lastReview: string;
   photos: string[];
   demo?: boolean;
+  customValues?: Record<string, string>;
+  ancestry?: Record<string, AncestorEntry>;
 };
 export type Farm = {
   id: string;
@@ -158,6 +174,7 @@ export function toCSV(
   birds: Bird[],
   farms: Farm[] = [],
   allBirds: Bird[] = birds,
+  customFields: CustomField[] = [],
 ) {
   const farmNames = new Map(farms.map((f) => [f.id, f.name])),
     byId = new Map(allBirds.map((b) => [b.id, b.code]));
@@ -165,13 +182,46 @@ export function toCSV(
   return (
     "\uFEFF" +
     [
-      [...csvFields, "farmName", "fatherCode", "motherCode"].join(","),
-      ...birds.map((b) =>
+      [
+        ...csvFields,
+        "farmName",
+        "fatherCode",
+        "motherCode",
+        "customValues",
+        "customFields",
+        "ancestry",
+      ].join(","),
+      ...birds.map((b, index) =>
         [
           ...csvFields.map((k) => cell(String(b[k] ?? ""))),
           cell(farmNames.get(b.farmId || "") || ""),
           cell(byId.get(b.father) || ""),
           cell(byId.get(b.mother) || ""),
+          cell(JSON.stringify(b.customValues || {})),
+          cell(index === 0 ? JSON.stringify(customFields) : ""),
+          cell(
+            JSON.stringify(
+              Object.fromEntries(
+                Object.entries(withoutPhotos(b).ancestry || {}).map(
+                  ([path, a]) => [
+                    path,
+                    {
+                      ...a,
+                      ...(a.details
+                        ? {
+                            details: {
+                              ...a.details,
+                              farmName:
+                                farmNames.get(a.details.farmId || "") || "",
+                            },
+                          }
+                        : {}),
+                    },
+                  ],
+                ),
+              ),
+            ),
+          ),
         ].join(","),
       ),
     ].join("\r\n")
@@ -246,6 +296,7 @@ export function validateImport(raw: unknown): {
   farms: Farm[];
   errors: string[];
   references: ImportReference[];
+  customFields: CustomField[];
 } {
   if (!raw || typeof raw !== "object")
     throw Error("El archivo no contiene una base de datos válida.");
@@ -254,6 +305,8 @@ export function validateImport(raw: unknown): {
     events?: unknown;
     farms?: unknown;
     references?: unknown;
+    settings?: AppSettings;
+    customFields?: CustomField[];
   };
   if (
     !Array.isArray(obj.birds) ||
@@ -262,10 +315,20 @@ export function validateImport(raw: unknown): {
       !(Array.isArray(obj.events) && obj.events.length))
   )
     throw Error("El archivo está vacío o no contiene registros.");
+  let customFields: CustomField[] =
+    obj.customFields || obj.settings?.customFields || [];
+  const first = obj.birds[0] as Record<string, unknown> | undefined;
+  if (first?.customFields && typeof first.customFields === "string") {
+    try {
+      customFields = JSON.parse(first.customFields);
+    } catch {
+      throw Error("La definición de categorías del CSV no es válida.");
+    }
+  }
+  validateCustomDefinitions(customFields);
   const importDate = today();
   const errors: string[] = [],
     birds: Bird[] = [],
-    seen = new Set<string>(),
     seenIds = new Set<string>();
   const farms: Farm[] = [];
   const farmIds = new Set<string>(),
@@ -324,10 +387,6 @@ export function validateImport(raw: unknown): {
       (typeof b.id !== "string" || !b.id.trim() || seenIds.has(b.id))
     ) {
       errors.push(`Fila ${i + 1}: identificador vacío, inválido o repetido.`);
-      return;
-    }
-    if (seen.has(code.toLowerCase())) {
-      errors.push(`Fila ${i + 1}: código repetido ${code}.`);
       return;
     }
     for (const k of csvFields) {
@@ -400,11 +459,101 @@ export function validateImport(raw: unknown): {
       );
       b.farmId = "";
     }
-    seen.add(code.toLowerCase());
     if (typeof b.id === "string") seenIds.add(b.id);
     const clean = emptyBird(importDate);
     for (const k of csvFields)
       if (typeof b[k] === "string") clean[k] = String(b[k]);
+    let customValues = b.customValues as Record<string, string> | undefined;
+    if (typeof b.customValues === "string") {
+      try {
+        customValues = JSON.parse(b.customValues || "{}");
+      } catch {
+        errors.push(`Fila ${i + 1}: categorías personalizadas inválidas.`);
+        return;
+      }
+    }
+    try {
+      validateCustomValues(customValues, customFields);
+    } catch (e) {
+      errors.push(`Fila ${i + 1}: ${(e as Error).message}`);
+      return;
+    }
+    let ancestry: Record<string, AncestorEntry> | undefined;
+    try {
+      const source =
+        typeof b.ancestry === "string"
+          ? JSON.parse(b.ancestry || "{}")
+          : b.ancestry;
+      if (source !== undefined) {
+        if (
+          !source ||
+          typeof source !== "object" ||
+          Array.isArray(source) ||
+          Object.keys(source).length > 30
+        )
+          throw Error("Linaje inválido: máximo cuatro generaciones.");
+        ancestry = {};
+        for (const [path, value] of Object.entries(source)) {
+          const entry = value as AncestorEntry;
+          if (
+            !/^[fm]{1,4}$/.test(path) ||
+            !entry ||
+            typeof entry.name !== "string" ||
+            entry.name.length > 150 ||
+            (entry.birdId !== undefined && typeof entry.birdId !== "string")
+          )
+            throw Error("Nombre o posición de ancestro inválidos.");
+          let details: Bird | undefined;
+          if (entry.details) {
+            if (entry.details.ancestry !== undefined)
+              throw Error(
+                "Los detalles del ancestro no pueden contener otro árbol anidado.",
+              );
+            const result = validateImport({
+              birds: [
+                {
+                  ...entry.details,
+                  name: entry.name || entry.details.name,
+                  code: entry.details.code || "ANCESTRO",
+                  id: crypto.randomUUID(),
+                },
+              ],
+              customFields,
+              farms,
+            });
+            if (
+              result.errors.some((e) => !e.includes("criadero desconocido")) ||
+              result.birds.length !== 1
+            )
+              throw Error(
+                "Detalles de ancestro inválidos: " + result.errors.join(" "),
+              );
+            const snapshotFarm = result.farms.find(
+              (f) => f.id === result.birds[0].farmId,
+            );
+            if (snapshotFarm) {
+              let farm = farmNames.get(snapshotFarm.name.toLowerCase());
+              if (!farm) {
+                farm = snapshotFarm;
+                farms.push(farm);
+                farmIds.add(farm.id);
+                farmNames.set(farm.name.toLowerCase(), farm);
+              }
+              result.birds[0].farmId = farm.id;
+            }
+            details = { ...result.birds[0], code: entry.details.code || "" };
+          }
+          ancestry[path] = {
+            name: entry.name.trim(),
+            ...(entry.birdId ? { birdId: entry.birdId } : {}),
+            ...(details ? { details } : {}),
+          };
+        }
+      }
+    } catch (e) {
+      errors.push(`Fila ${i + 1}: ${(e as Error).message}`);
+      return;
+    }
     const resultBird = {
       ...clean,
       id: typeof b.id === "string" ? b.id : clean.id,
@@ -412,6 +561,10 @@ export function validateImport(raw: unknown): {
       code,
       photos: photos as string[],
       demo: b.demo === true,
+      ...(ancestry ? { ancestry } : {}),
+      ...(customValues
+        ? { customValues: Object.fromEntries(Object.entries(customValues)) }
+        : {}),
     };
     birds.push(resultBird);
     seenIds.add(resultBird.id);
@@ -492,7 +645,7 @@ export function validateImport(raw: unknown): {
       )
         references.push({ id: String(r[key]), code: String(r[key + "Code"]) });
   }
-  return { birds, events, farms, errors, references };
+  return { birds, events, farms, errors, references, customFields };
 }
 export type ImportReference = { id: string; code: string };
 export function mergeImport(
@@ -502,8 +655,10 @@ export function mergeImport(
     events: HealthEvent[];
     farms?: Farm[];
     references?: ImportReference[];
+    customFields?: CustomField[];
+    settings?: AppSettings;
   },
-  mode: string,
+  mode: string | ImportDecisions,
 ): Database {
   const farms = [...(db.farms || [])],
     farmMap = new Map<string, string>(),
@@ -524,38 +679,96 @@ export function mergeImport(
     }
   }
   const birds = db.birds.map((b) => ({ ...b })),
-    byCode = new Map(birds.map((b, i) => [b.code.trim().toLowerCase(), i])),
     idMap = new Map<string, string>(),
     skipped = new Set<string>(),
-    targets = new Map<string, Bird>();
+    targets = new Map<string, Bird>(),
+    positions = new Map(birds.map((b, i) => [b.id, i])),
+    claimed = new Set<string>();
+  const index = duplicateIndex(db.birds, incoming.birds);
   for (const bird of incoming.birds) {
-    const key = bird.code.trim().toLowerCase(),
-      i = byCode.get(key);
-    if (i !== undefined && mode === "skip") {
+    const matches = index.matches(bird);
+    const legacy = typeof mode === "string";
+    const old = legacy
+      ? birds.find(
+          (b) => b.code.trim().toLowerCase() === bird.code.trim().toLowerCase(),
+        )
+      : undefined;
+    const decision = legacy
+      ? old
+        ? {
+            action:
+              mode === "update" ? ("replace" as const) : ("skip" as const),
+            target: "db:" + old.id,
+          }
+        : undefined
+      : mode[bird.id];
+    if (!legacy && matches.length && !decision)
+      throw Error(
+        `Revisa la posible coincidencia de «${bird.name}» antes de importar.`,
+      );
+    let target: string | undefined;
+    if (decision?.target && decision.action !== "keep") {
+      const match = legacy
+        ? undefined
+        : matches.find((m) => m.key === decision.target);
+      if (!legacy && !match)
+        throw Error(
+          "La coincidencia elegida ya no es válida. Revisa la importación.",
+        );
+      target = decision.target.startsWith("db:")
+        ? decision.target.slice(3)
+        : idMap.get(decision.target.slice(5));
+    }
+    if (decision?.action === "skip") {
       skipped.add(bird.id);
-      idMap.set(bird.id, birds[i].id);
+      if (!target && matches.length === 1) {
+        const m = matches[0];
+        target = m.source === "db" ? m.bird.id : idMap.get(m.bird.id);
+      }
+      if (target) idMap.set(bird.id, target);
       continue;
     }
-    const id = i === undefined ? crypto.randomUUID() : birds[i].id;
+    if (decision?.action === "replace" && (!target || !positions.has(target)))
+      throw Error(
+        "Elige un registro existente para reemplazar; no puede ser un registro omitido sin destino.",
+      );
+    const id = decision?.action === "replace" ? target! : crypto.randomUUID();
+    if (decision?.action === "replace" && claimed.has(id))
+      throw Error(
+        "Dos filas intentan reemplazar el mismo gallo. Conserva ambas o cambia una decisión.",
+      );
+    if (decision?.action === "replace") claimed.add(id);
     idMap.set(bird.id, id);
     const next = { ...bird, id, farmId: farmMap.get(bird.farmId || "") || "" };
     targets.set(bird.id, next);
-    if (i === undefined) {
-      byCode.set(key, birds.length);
+    const position = positions.get(id);
+    if (position === undefined) {
+      positions.set(id, birds.length);
       birds.push(next);
-    } else birds[i] = next;
+    } else birds[position] = next;
   }
-  const byId = new Map(birds.map((b) => [b.id, b]));
+  const byId = new Map(birds.map((b) => [b.id, b])),
+    byCode = new Map<string, string[]>();
+  for (const b of birds) {
+    const key = b.code.trim().toLowerCase();
+    const list = byCode.get(key);
+    if (list) list.push(b.id);
+    else byCode.set(key, [b.id]);
+  }
   for (const ref of incoming.references || []) {
-    const i = byCode.get(ref.code.trim().toLowerCase());
-    if (i !== undefined && !idMap.has(ref.id)) idMap.set(ref.id, birds[i].id);
+    const matches = byCode.get(ref.code.trim().toLowerCase()) || [];
+    if (!idMap.has(ref.id)) {
+      if (byId.has(ref.id) && matches.includes(ref.id))
+        idMap.set(ref.id, ref.id);
+      else if (matches.length === 1) idMap.set(ref.id, matches[0]);
+    }
   }
   const parent = (id: string) => idMap.get(id) || (byId.has(id) ? id : "");
-  for (const bird of incoming.birds) {
-    const target = targets.get(bird.id);
+  for (const b of incoming.birds) {
+    const target = targets.get(b.id);
     if (target) {
-      target.father = parent(bird.father);
-      target.mother = parent(bird.mother);
+      target.father = parent(b.father);
+      target.mother = parent(b.mother);
     }
   }
   const events = [...db.events],
@@ -564,20 +777,78 @@ export function mergeImport(
     if (skipped.has(event.birdId)) continue;
     const birdId = event.birdId ? idMap.get(event.birdId) : "";
     if (event.birdId && !birdId) continue;
-    const next = { ...event, birdId: birdId || "" },
-      i = eventPositions.get(event.id);
+    const i = eventPositions.get(event.id),
+      decision = typeof mode === "string" ? undefined : mode[event.birdId];
+    const next = { ...event, birdId: birdId || "" };
     if (i !== undefined) {
-      if (mode === "update") events[i] = next;
+      if (
+        (typeof mode === "string"
+          ? mode === "update"
+          : decision?.action === "replace") &&
+        events[i].birdId === next.birdId
+      )
+        events[i] = next;
+      else if (event.birdId && events[i].birdId !== next.birdId) {
+        next.id = crypto.randomUUID();
+        eventPositions.set(next.id, events.length);
+        events.push(next);
+      }
     } else {
-      eventPositions.set(event.id, events.length);
+      eventPositions.set(next.id, events.length);
       events.push(next);
     }
   }
-  if (invalidParentage(birds).length)
+  for (const target of targets.values())
+    if (target.ancestry) {
+      target.ancestry = Object.fromEntries(
+        Object.entries(target.ancestry).map(([path, entry]) => [
+          path,
+          {
+            ...entry,
+            birdId: entry.birdId ? parent(entry.birdId) : undefined,
+            ...(entry.details
+              ? {
+                  details: {
+                    ...entry.details,
+                    farmId:
+                      farmMap.get(entry.details.farmId || "") ||
+                      (db.farms || []).find(
+                        (f) => f.id === entry.details!.farmId,
+                      )?.id ||
+                      "",
+                  },
+                }
+              : {}),
+          },
+        ]),
+      );
+    }
+  if (invalidParentage(birds).length || ancestryCycle(birds))
     throw Error(
       "La importación crearía un ciclo en el linaje. Revisa los progenitores del archivo; no se incorporó ningún dato.",
     );
-  return { ...db, birds, events, farms };
+  let settings = db.settings;
+  const incomingFields =
+    incoming.customFields || incoming.settings?.customFields || [];
+  if (incomingFields.length) {
+    const fields = structuredClone(db.settings?.customFields || []);
+    for (const field of incomingFields) {
+      const old = fields.find((f) => f.id === field.id);
+      if (old) {
+        if (old.type !== field.type)
+          throw Error(
+            `La categoría «${field.label}» tiene otro tipo en este dispositivo. No se modificaron los datos.`,
+          );
+        if (old.type === "choice")
+          old.options = [...new Set([...old.options, ...field.options])];
+      } else fields.push({ ...field });
+    }
+    validateCustomDefinitions(fields);
+    settings = { ...getSettings(db), customFields: fields };
+  }
+  for (const b of birds)
+    validateCustomValues(b.customValues, settings?.customFields || []);
+  return { ...db, birds, events, farms, ...(settings ? { settings } : {}) };
 }
 
 export type BirdFilters = {

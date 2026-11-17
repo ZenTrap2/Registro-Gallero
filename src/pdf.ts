@@ -1,4 +1,10 @@
 import {
+  ancestorAt,
+  ancestorPaths,
+  ancestorLabel,
+  expandedAncestry,
+} from "./ancestry";
+import {
   hydrateBird,
   type OperationProgress,
   type ProgressHandler,
@@ -83,6 +89,7 @@ export function drawRooster(
 function* buildPDF(
   birds: Bird[],
   db: Database,
+  includeAncestorDetails = false,
 ): Generator<OperationProgress, jsPDF, Bird | undefined> {
   if (!birds.length) throw Error("No hay fichas para exportar.");
   const cfg = getSettings(db),
@@ -332,18 +339,87 @@ function* buildPDF(
       [cfg.catalogs.purpose.label, b.purpose],
       [cfg.plLabel, b.pl],
     ]);
+    if ((cfg.customFields || []).some((f) => f.active !== false)) {
+      section("", "Categorías adicionales");
+      fields(
+        (cfg.customFields || [])
+          .filter((f) => f.active !== false)
+          .map((f) => [f.label, b.customValues?.[f.id]]),
+      );
+    }
     section("03", "Genealogía");
-    const parent = (id: string) => {
-      const p = byId.get(id);
-      return p ? `${p.name} · ${p.code}` : "";
-    };
     fields(
-      [
-        ["Padre", parent(b.father)],
-        ["Madre", parent(b.mother)],
-      ],
+      ["f", "m"].map((path) => {
+        const a = b.ancestry?.[path] || ancestorAt(b, path, byId);
+        return [ancestorLabel(path), a?.name];
+      }),
       2,
     );
+    for (let generation = 2; generation <= 4; generation++) {
+      const paths = ancestorPaths(generation);
+      if (
+        paths.some(
+          (path) => (b.ancestry?.[path] || ancestorAt(b, path, byId))?.name,
+        )
+      ) {
+        paragraph(
+          generation === 2
+            ? "ABUELOS"
+            : generation === 3
+              ? "BISABUELOS"
+              : "TATARABUELOS",
+          "",
+        );
+        fields(
+          paths.map((path) => [
+            ancestorLabel(path),
+            (b.ancestry?.[path] || ancestorAt(b, path, byId))?.name,
+          ]),
+          2,
+        );
+      }
+    }
+    if (includeAncestorDetails) {
+      for (let generation = 1; generation <= 4; generation++)
+        for (const path of ancestorPaths(generation)) {
+          const entry = b.ancestry?.[path] || ancestorAt(b, path, byId),
+            a = entry?.details;
+          if (!a) continue;
+          section("", `Detalles: ${ancestorLabel(path)}`);
+          fields([
+            ["Nombre", entry.name],
+            ["Código / placa", a.code],
+            [cfg.catalogs.breed.label, a.breed],
+            [cfg.catalogs.color.label, a.color],
+            ["Marca", a.mark],
+            ["Nacimiento", date(a.birth)],
+            ["Edad aproximada", a.age],
+            ["Peso", a.weightKg ? `${a.weightKg} kg` : ""],
+            ["Criadero", farmNames.get(a.farmId || "")],
+            ["Procedencia", a.origin],
+            ["Ingreso", date(a.arrival)],
+            [cfg.catalogs.purpose.label, a.purpose],
+            [cfg.plLabel, a.pl],
+            [cfg.catalogs.status.label, a.status],
+            ["Última revisión", date(a.lastReview)],
+            ...(cfg.customFields || [])
+              .filter((f) => f.active !== false)
+              .map(
+                (f) =>
+                  [f.label, a.customValues?.[f.id]] as [
+                    string,
+                    string | undefined,
+                  ],
+              ),
+          ]);
+          if (a.notes) paragraph("Notas del ancestro", a.notes);
+          for (const photo of a.photos) {
+            ensure(65);
+            image(photo, LEFT, y, 60, 55);
+            y += 60;
+          }
+        }
+    }
     section("04", "Notas generales");
     paragraph("", b.notes || "Sin datos registrados");
     const events = [...(eventsByBird.get(b.id) || [])].sort((a, b) =>
@@ -411,8 +487,17 @@ function* buildPDF(
   }
   return pdf;
 }
-export function createBirdPDF(birds: Bird[], db: Database) {
-  const iterator = buildPDF(birds, db);
+export function createBirdPDF(
+  birds: Bird[],
+  db: Database,
+  options: { includeAncestorDetails?: boolean } = {},
+) {
+  const byId = new Map(db.birds.map((b) => [b.id, b]));
+  const iterator = buildPDF(
+    birds.map((b) => expandedAncestry(b, byId)),
+    db,
+    options.includeAncestorDetails,
+  );
   let step = iterator.next();
   while (!step.done) step = iterator.next();
   return step.value;
@@ -420,14 +505,37 @@ export function createBirdPDF(birds: Bird[], db: Database) {
 export async function exportBirdPDF(
   birds: Bird[],
   db: Database,
-  options: { includePhotos?: boolean; onProgress?: ProgressHandler } = {},
+  options: {
+    includePhotos?: boolean;
+    includeAncestorDetails?: boolean;
+    onProgress?: ProgressHandler;
+  } = {},
 ) {
-  const iterator = buildPDF(birds, db);
+  const byId = new Map(db.birds.map((b) => [b.id, b]));
+  const prepared = birds.map((b) => expandedAncestry(b, byId));
+  const iterator = buildPDF(prepared, db, options.includeAncestorDetails);
   let step = iterator.next();
   while (!step.done) {
     options.onProgress?.(step.value);
     const bird = await hydrateBird(
-      birds[step.value.completed],
+      options.includeAncestorDetails
+        ? prepared[step.value.completed]
+        : {
+            ...prepared[step.value.completed],
+            ancestry: Object.fromEntries(
+              Object.entries(prepared[step.value.completed].ancestry || {}).map(
+                ([p, a]) => [
+                  p,
+                  {
+                    ...a,
+                    ...(a.details
+                      ? { details: { ...a.details, photos: [] } }
+                      : {}),
+                  },
+                ],
+              ),
+            ),
+          },
       options.includePhotos !== false,
     );
     await new Promise((r) => setTimeout(r, 0));

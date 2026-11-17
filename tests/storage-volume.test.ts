@@ -185,3 +185,76 @@ describe("Persistencia para criaderos grandes", () => {
     expect((await hydrateBird(retried.birds[0])).photos).toEqual([photo]);
   });
 });
+it("conserva dos placas iguales con IDs distintos y fotografías de ancestros en IndexedDB", async () => {
+  const a = {
+      ...birds(1)[0],
+      ancestry: {
+        m: {
+          name: "Madre manual",
+          details: { ...birds(1)[0], name: "Madre manual", photos: [photo] },
+        },
+      },
+    },
+    b = { ...a, id: "other" };
+  const saved = await writeDB({ birds: [a, b], events: [] });
+  expect(saved.birds).toHaveLength(2);
+  expect(saved.birds[0].ancestry?.m.details?.photos[0]).toMatch(/^idb-photo:/);
+  const ref = saved.birds[0].ancestry!.m.details!.photos[0];
+  expect(
+    (await hydrateBird(saved.birds[1])).ancestry?.m.details?.photos,
+  ).toEqual([photo]);
+  expect((await readDB()).birds.map((b) => b.code)).toEqual([a.code, a.code]);
+  const kept = await writeDB(
+    { ...saved, birds: saved.birds.slice(0, 1) },
+    { base: saved },
+  );
+  expect((await getPhoto(ref)).size).toBeGreaterThan(0);
+  await writeDB({ ...kept, birds: [] }, { base: kept });
+  await expect(getPhoto(ref)).rejects.toThrow("No se encontró");
+});
+it("actualiza una base v2 con índice único sin perder fichas y admite placas repetidas después", async () => {
+  const original = birds(1)[0];
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.open("registro-gallero", 2);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      db.createObjectStore("database");
+      const store = db.createObjectStore("birds", { keyPath: "id" });
+      store.createIndex("codeKey", "codeKey", { unique: true });
+      for (const name of ["events", "farms", "photos"])
+        db.createObjectStore(name, { keyPath: "id" });
+      db.createObjectStore("meta");
+    };
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result,
+        tx = db.transaction(["birds", "meta"], "readwrite");
+      tx.objectStore("birds").put({
+        ...original,
+        codeKey: original.code.toLowerCase(),
+      });
+      tx.objectStore("meta").put(
+        {
+          revision: 1,
+          hasFarms: false,
+          hasSettings: false,
+          birdOrder: [original.id],
+          eventOrder: [],
+          farmOrder: [],
+        },
+        "state",
+      );
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+    };
+  });
+  const loaded = await readDB();
+  expect(loaded.birds).toEqual([original]);
+  await writeDB(
+    { ...loaded, birds: [...loaded.birds, { ...original, id: "another" }] },
+    { base: loaded },
+  );
+  expect((await readDB()).birds).toHaveLength(2);
+});

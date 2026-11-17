@@ -1,3 +1,4 @@
+import { allBirdPhotos, mapBirdPhotos, withoutPhotos } from "./ancestry";
 import {
   examples,
   type Bird,
@@ -44,7 +45,9 @@ function remember(data: Database, revision: number) {
     events: fingerprints(data.events),
     farms: fingerprints(data.farms || []),
     photoIds: new Set(
-      data.birds.flatMap((b) => b.photos.filter(isPhotoReference).map(photoId)),
+      data.birds.flatMap((b) =>
+        allBirdPhotos(b).filter(isPhotoReference).map(photoId),
+      ),
     ),
   };
   versions.set(data, revision);
@@ -57,7 +60,7 @@ export function closeStorage() {
 }
 function openDB() {
   return (connection ??= new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open("registro-gallero", 2);
+    const request = indexedDB.open("registro-gallero", 3);
     let rejected = false;
     request.onupgradeneeded = () => {
       const db = request.result;
@@ -66,10 +69,17 @@ function openDB() {
       for (const name of ["birds", "events", "farms", "photos"])
         if (!db.objectStoreNames.contains(name)) {
           const store = db.createObjectStore(name, { keyPath: "id" });
-          if (name === "birds")
-            store.createIndex("codeKey", "codeKey", { unique: true });
+          if (name === "birds") store.createIndex("codeKey", "codeKey");
           if (name === "events") store.createIndex("birdId", "birdId");
         }
+      const birds = request.transaction!.objectStore("birds");
+      if (
+        birds.indexNames.contains("codeKey") &&
+        birds.index("codeKey").unique
+      ) {
+        birds.deleteIndex("codeKey");
+        birds.createIndex("codeKey", "codeKey");
+      }
       if (!db.objectStoreNames.contains("meta")) db.createObjectStore("meta");
     };
     request.onsuccess = () => {
@@ -234,50 +244,52 @@ async function performWrite(
     prepared = new Map<string, Promise<string>>(),
     birds: Bird[] = [];
   const totalPhotos = data.birds.reduce(
-    (n, b) => n + b.photos.filter((p) => !isPhotoReference(p)).length,
+    (n, b) => n + allBirdPhotos(b).filter((p) => !isPhotoReference(p)).length,
     0,
   );
   let completed = 0;
   for (const b of data.birds) {
-    const photos: string[] = [];
-    for (const value of b.photos) {
-      if (isPhotoReference(value)) {
-        photos.push(value);
-        continue;
-      }
-      let promise = prepared.get(value);
-      if (!promise) {
-        promise = (async () => {
-          const blob = dataPhoto(value),
-            digest = await crypto.subtle.digest(
-              "SHA-256",
-              await blob.arrayBuffer(),
-            ),
-            id = Array.from(new Uint8Array(digest))
-              .map((v) => v.toString(16).padStart(2, "0"))
-              .join("");
-          if (!before.photoIds.has(id) && !newPhotos.has(id))
-            newPhotos.set(id, { id, blob, thumbnail: await thumbnail(blob) });
-          return "idb-photo:" + id;
-        })();
-        prepared.set(value, promise);
-      }
-      photos.push(await promise);
-      completed++;
-      if (completed % 10 === 0 || completed === totalPhotos) {
-        onProgress?.({
-          label: "Preparando fotografías",
-          completed,
-          total: totalPhotos,
-        });
-        await yieldUI();
-      }
-    }
-    birds.push(b.photos.every(isPhotoReference) ? b : { ...b, photos });
+    birds.push(
+      await mapBirdPhotos(b, async (value) => {
+        if (isPhotoReference(value)) {
+          return value;
+        }
+        let promise = prepared.get(value);
+        if (!promise) {
+          promise = (async () => {
+            const blob = dataPhoto(value),
+              digest = await crypto.subtle.digest(
+                "SHA-256",
+                await blob.arrayBuffer(),
+              ),
+              id = Array.from(new Uint8Array(digest))
+                .map((v) => v.toString(16).padStart(2, "0"))
+                .join("");
+            if (!before.photoIds.has(id) && !newPhotos.has(id))
+              newPhotos.set(id, { id, blob, thumbnail: await thumbnail(blob) });
+            return "idb-photo:" + id;
+          })();
+          prepared.set(value, promise);
+        }
+        const reference = await promise;
+        completed++;
+        if (completed % 10 === 0 || completed === totalPhotos) {
+          onProgress?.({
+            label: "Preparando fotografías",
+            completed,
+            total: totalPhotos,
+          });
+          await yieldUI();
+        }
+        return reference;
+      }),
+    );
   }
   const canonical: Database = { ...data, birds };
   const activePhotos = new Set(
-    birds.flatMap((b) => b.photos.filter(isPhotoReference).map(photoId)),
+    birds.flatMap((b) =>
+      allBirdPhotos(b).filter(isPhotoReference).map(photoId),
+    ),
   );
   const changed = <T extends { id: string }>(
     values: T[],
@@ -381,10 +393,7 @@ export async function hydrateBird(
   bird: Bird,
   includePhotos = true,
 ): Promise<Bird> {
-  return {
-    ...bird,
-    photos: includePhotos
-      ? await Promise.all(bird.photos.map(photoDataURL))
-      : [],
-  };
+  return includePhotos
+    ? mapBirdPhotos(bird, photoDataURL)
+    : withoutPhotos(bird);
 }

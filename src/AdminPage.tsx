@@ -1,3 +1,5 @@
+import { AdminAccess, RecoverySettings } from "./AdminAccess";
+import { CustomCategories } from "./CustomFields";
 import { useEffect, useState } from "react";
 import {
   LockKeyhole,
@@ -15,7 +17,7 @@ import {
   type CatalogKey,
   type RenameMap,
 } from "./settings";
-import { hasPIN, setPIN, checkPIN } from "./admin-pin";
+import { setPIN } from "./admin-pin";
 import { Modal } from "./Modal";
 type Row = { original: string; value: string };
 export function AdminPage({
@@ -28,22 +30,12 @@ export function AdminPage({
   busy: boolean;
 }) {
   const [unlocked, setUnlocked] = useState(false),
-    [exists, setExists] = useState<boolean | null>(null),
     [pin, setPin] = useState(""),
     [repeat, setRepeat] = useState(""),
     [error, setError] = useState(""),
     [checking, setChecking] = useState(false),
     [changing, setChanging] = useState(false),
     [notice, setNotice] = useState("");
-  useEffect(() => {
-    try {
-      setExists(hasPIN());
-    } catch {
-      setError(
-        "No se puede acceder al almacenamiento del PIN en este navegador.",
-      );
-    }
-  }, []);
   useEffect(() => {
     if (!unlocked) return;
     const timer = setTimeout(
@@ -56,97 +48,7 @@ export function AdminPage({
     );
     return () => clearTimeout(timer);
   }, [unlocked]);
-  if (!unlocked)
-    return (
-      <section className="panel admin-lock">
-        <span className="lock-icon">
-          <LockKeyhole size={30} />
-        </span>
-        <h2>Administración de categorías</h2>
-        <p>
-          {exists
-            ? "Introduce tu PIN para editar los nombres y opciones de clasificación."
-            : "Crea un PIN local para proteger esta pestaña de cambios casuales."}
-        </p>
-        <form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setError("");
-            setChecking(true);
-            try {
-              if (exists) {
-                if (!(await checkPIN(pin)))
-                  throw Error("PIN incorrecto. Inténtalo de nuevo.");
-              } else {
-                if (pin !== repeat) throw Error("Los PIN no coinciden.");
-                await setPIN(pin);
-                setExists(true);
-              }
-              setUnlocked(true);
-              setPin("");
-              setRepeat("");
-            } catch (e) {
-              setError((e as Error).message);
-            } finally {
-              setChecking(false);
-            }
-          }}
-        >
-          <label>
-            PIN
-            <input
-              autoComplete={exists ? "current-password" : "new-password"}
-              type="password"
-              inputMode="numeric"
-              pattern="[0-9]{6,12}"
-              minLength={6}
-              maxLength={12}
-              required
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-            />
-          </label>
-          {!exists && (
-            <label>
-              Repetir PIN
-              <input
-                autoComplete="new-password"
-                type="password"
-                inputMode="numeric"
-                pattern="[0-9]{6,12}"
-                minLength={6}
-                maxLength={12}
-                required
-                value={repeat}
-                onChange={(e) => setRepeat(e.target.value)}
-              />
-            </label>
-          )}
-          {error && (
-            <p className="form-error" role="alert">
-              {error}
-            </p>
-          )}
-          <button
-            className="btn primary"
-            disabled={checking || exists === null}
-          >
-            <LockKeyhole size={15} />
-            {checking
-              ? "Comprobando…"
-              : exists
-                ? "Desbloquear"
-                : "Crear PIN y acceder"}
-          </button>
-        </form>
-        <p className="help">
-          PIN de 6 a 12 dígitos, guardado solo en este navegador. La pestaña se
-          bloquea al salir o después de 10 minutos. No sustituye los permisos de
-          una cuenta; quien controla el navegador puede modificar su
-          almacenamiento. Conserva tu PIN: no hay recuperación por correo.
-        </p>
-      </section>
-    );
+  if (!unlocked) return <AdminAccess unlock={() => setUnlocked(true)} />;
   return (
     <>
       {notice && (
@@ -175,7 +77,19 @@ export function AdminPage({
           Bloquear
         </button>
       </div>
-      <CatalogEditor db={db} save={save} busy={busy} />
+      <RecoverySettings />
+      <CatalogEditor
+        key={JSON.stringify(db.settings)}
+        db={db}
+        save={save}
+        busy={busy}
+      />
+      <CustomCategories
+        key={JSON.stringify(db.settings) + "custom"}
+        db={db}
+        save={save}
+        busy={busy}
+      />
       {changing && (
         <Modal title="Cambiar PIN local" close={() => setChanging(false)}>
           <form
@@ -358,6 +272,32 @@ function CatalogEditor({
                   }
                 />
               </label>
+              <p className="help">
+                {settings.catalogs[k].active === false
+                  ? "Categoría retirada del formulario. Sus datos se conservan."
+                  : "Categoría activa en el formulario."}
+              </p>
+              <button
+                type="button"
+                className="btn"
+                disabled={busy}
+                onClick={() =>
+                  setSettings({
+                    ...settings,
+                    catalogs: {
+                      ...settings.catalogs,
+                      [k]: {
+                        ...settings.catalogs[k],
+                        active: settings.catalogs[k].active === false,
+                      },
+                    },
+                  })
+                }
+              >
+                {settings.catalogs[k].active === false
+                  ? "Restaurar categoría"
+                  : "Retirar categoría del formulario"}
+              </button>
               <h3>Opciones disponibles</h3>
               {rows[k].map((r, i) => (
                 <div className="catalog-option" key={i}>
@@ -431,7 +371,11 @@ function CatalogEditor({
         </div>
       </form>
       {pending && (
-        <Modal title="¿Guardar las categorías?" close={() => setPending(null)}>
+        <Modal
+          title="¿Guardar las categorías?"
+          close={() => setPending(null)}
+          busy={busy}
+        >
           <p>
             Los nombres se aplicarán a formularios, filtros, fichas y PDF. Las
             opciones renombradas actualizarán los registros existentes. Los

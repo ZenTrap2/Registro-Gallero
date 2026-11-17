@@ -24,7 +24,8 @@ export function FarmPage({
   const counts = useMemo(() => {
     const result = new Map<string, number>();
     for (const bird of db.birds)
-      if (bird.farmId) result.set(bird.farmId, (result.get(bird.farmId) || 0) + 1);
+      if (bird.farmId)
+        result.set(bird.farmId, (result.get(bird.farmId) || 0) + 1);
     return result;
   }, [db.birds]);
   return (
@@ -66,7 +67,7 @@ export function FarmPage({
                 <p>{f.contact || "Sin contacto registrado"}</p>
                 <p className="preserve">{f.notes || "Sin notas registradas"}</p>
                 <span className="badge green">
-                  {(counts.get(f.id) || 0)} gallos
+                  {counts.get(f.id) || 0} gallos
                 </span>
               </div>
               <button
@@ -323,8 +324,16 @@ export function AdvancedFilters({
 }
 const help = [
   [
+    "Pedigrí de cuatro generaciones",
+    "El formulario permite registrar padres, abuelos, bisabuelos y tatarabuelos, hasta 30 posiciones. Escribe nombres aunque no existan en la base. «Añadir detalles» guarda una ficha del ancestro dentro del linaje sin crear un animal en Mis gallos. «Añadir desde el registro» vincula un animal y hereda su linaje conocido. No se inventan datos faltantes. Las secciones se despliegan según necesites. En PDF aparecen los nombres; activa «Incluir detalles de los ancestros en el PDF» si también quieres sus datos completos.",
+  ],
+  [
+    "Crear y retirar categorías",
+    "En Administración puedes crear categorías opcionales de texto, entero, decimal, fecha o lista de opciones. El tipo queda fijo al guardarlas. Retirar una categoría oculta el campo sin borrar sus valores; se puede restaurar. También puedes retirar y restaurar los catálogos del formulario. JSON y CSV conservan las categorías adicionales y el pedigrí; CSV no incluye imágenes.",
+  ],
+  [
     "Administración de categorías",
-    "Accede desde el menú lateral y crea un PIN de 6 a 12 dígitos la primera vez. Puedes cambiar nombres de categorías y añadir, renombrar o quitar opciones. Al renombrar, se actualizan los registros que usan esa opción; no se pueden quitar opciones en uso. Cambiar el nombre de PL mantiene su función de conteo de criaderos y su validación de enteros. La pestaña se bloquea al salir o después de diez minutos. El PIN es local, no se exporta y protege de cambios casuales en la interfaz; no reemplaza los permisos de una cuenta. No hay recuperación del PIN por correo.",
+    "Accede desde el menú lateral y crea un PIN de 6 a 12 dígitos la primera vez. Puedes cambiar nombres de categorías y añadir, renombrar o quitar opciones. Al renombrar, se actualizan los registros que usan esa opción; no se pueden quitar opciones en uso. Cambiar el nombre de PL mantiene su función de conteo de criaderos y su validación de enteros. La pestaña se bloquea al salir o después de diez minutos. El PIN es local, no se exporta y protege de cambios casuales en la interfaz; no reemplaza los permisos de una cuenta. Puedes configurar una pregunta para restablecer el PIN y un PIN maestro propio desde «Métodos de acceso y recuperación». No hay clave maestra predeterminada ni recuperación por correo.",
   ],
   [
     "PL",
@@ -332,7 +341,7 @@ const help = [
   ],
   [
     "Registrar y editar",
-    "El botón «Registrar gallo» permanece visible al desplazarte por cualquier pantalla. Solo nombre y código único son obligatorios. Abre una ficha y pulsa «Editar» para cambiar cualquiera de sus datos, fotos o progenitores. El peso se registra en kg y acepta hasta tres decimales.",
+    "El botón «Registrar gallo» permanece visible al desplazarte por cualquier pantalla. Solo nombre y placa/código son obligatorios. Si una placa se repite, confirma expresamente que son animales distintos. Abre una ficha y pulsa «Editar» para cambiar cualquiera de sus datos, fotos o progenitores. El peso se registra en kg y acepta hasta tres decimales.",
   ],
   [
     "Criaderos y procedencia",
@@ -360,7 +369,7 @@ const help = [
   ],
   [
     "Importar y resolver duplicados",
-    "Selecciona JSON o CSV desde «Importar datos». Revisa registros, criaderos y errores antes de confirmar. Puedes omitir o actualizar códigos duplicados y cancelar. Los criaderos se comparan por nombre: al actualizar se reemplazan sus datos con los del archivo. Los registros antiguos sin campos nuevos siguen siendo compatibles.",
+    "Selecciona JSON o CSV desde «Importar datos». Revisa registros, criaderos y errores antes de confirmar. La aplicación señala coincidencias por nombre, placa/código o ID, también dentro del archivo. Decide omitir, reemplazar el destino elegido o conservar ambos con IDs distintos. Puedes aplicar decisiones al lote y ajustar cada caso; no se guarda mientras haya coincidencias pendientes. Los padres y la fecha de nacimiento no bastan para señalar duplicados. Los criaderos existentes se conservan. Los registros antiguos sin campos nuevos siguen siendo compatibles.",
   ],
   [
     "Almacenamiento y copias",

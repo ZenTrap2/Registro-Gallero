@@ -1,3 +1,5 @@
+import { duplicateIndex, type ImportDecisions } from "./import-duplicates";
+import { DuplicateChoice } from "./DuplicateChoice";
 import { useMemo, useState } from "react";
 import type { Database } from "./data";
 import type { ImportData } from "./transfer";
@@ -8,8 +10,8 @@ export function ImportPreview({
   db,
   selected,
   change,
-  mode,
-  setMode,
+  decisions,
+  setDecisions,
   confirm,
   cancel,
   busy,
@@ -18,33 +20,39 @@ export function ImportPreview({
   db: Database;
   selected: ReadonlySet<string>;
   change: (next: Set<string>) => void;
-  mode: string;
-  setMode: (mode: string) => void;
+  decisions: ImportDecisions;
+  setDecisions: (decisions: ImportDecisions) => void;
   confirm: () => void;
   cancel: () => void;
   busy: boolean;
 }) {
   const [query, setQuery] = useState("");
-  const codes = useMemo(
-      () => new Set(db.birds.map((b) => b.code.toLowerCase())),
-      [db.birds],
-    ),
-    records = useMemo(
-      () =>
-        preview.birds.filter((b) =>
-          (b.name + " " + b.code + " " + b.breed)
-            .toLowerCase()
-            .includes(query.toLowerCase().trim()),
-        ),
-      [preview.birds, query],
-    );
-  const duplicates = useMemo(
+  const incoming = useMemo(
+    () => preview.birds.filter((b) => selected.has(b.id)),
+    [preview.birds, selected],
+  );
+  const index = useMemo(
+    () => duplicateIndex(db.birds, incoming),
+    [db.birds, incoming],
+  );
+  const conflicts = useMemo(
+    () => incoming.filter((b) => index.has(b)),
+    [index, incoming],
+  );
+  const pending = conflicts.filter(
+    (b) =>
+      !decisions[b.id] ||
+      (decisions[b.id].action === "replace" &&
+        !index.matches(b).some((m) => m.key === decisions[b.id].target)),
+  ).length;
+  const records = useMemo(
     () =>
-      preview.birds.reduce(
-        (n, b) => n + (codes.has(b.code.toLowerCase()) ? 1 : 0),
-        0,
+      preview.birds.filter((b) =>
+        (b.name + " " + b.code + " " + b.breed)
+          .toLowerCase()
+          .includes(query.toLowerCase().trim()),
       ),
-    [preview.birds, codes],
+    [preview.birds, query],
   );
   return (
     <div className="import-preview">
@@ -56,8 +64,9 @@ export function ImportPreview({
         <strong>{preview.errors.length}</strong> errores
       </p>
       <p>
-        {duplicates} códigos ya existen en tu criadero. Se incorporarán
-        únicamente los registros seleccionados.
+        {conflicts.length} posibles duplicados por nombre, placa/código o
+        identificador, incluidos los del propio archivo. {pending} pendientes de
+        decisión. Se incorporarán únicamente los registros seleccionados.
       </p>
       {preview.errors.length > 0 && (
         <details>
@@ -93,49 +102,90 @@ export function ImportPreview({
         {(page) => (
           <div className="import-records">
             {page.map((b) => (
-              <label className="import-record" key={b.id}>
-                <input
-                  type="checkbox"
-                  checked={selected.has(b.id)}
-                  disabled={busy}
-                  aria-label={`Seleccionar ${b.name} para importar`}
-                  onChange={(e) => {
-                    const next = new Set(selected);
-                    if (e.target.checked) next.add(b.id);
-                    else next.delete(b.id);
-                    change(next);
-                  }}
-                />
-                <span>
-                  <strong>{b.name}</strong>
-                  <small>
-                    {b.code} · {b.breed || "Sin raza registrada"}
-                  </small>
-                </span>
-                {codes.has(b.code.toLowerCase()) && (
-                  <span className="badge sand">Código existente</span>
+              <div className="import-record" key={b.id}>
+                <label className="import-row-selection">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(b.id)}
+                    disabled={busy}
+                    aria-label={`Seleccionar ${b.name} para importar`}
+                    onChange={(e) => {
+                      const next = new Set(selected);
+                      if (e.target.checked) next.add(b.id);
+                      else next.delete(b.id);
+                      change(next);
+                    }}
+                  />
+                  <span>
+                    <strong>{b.name}</strong>
+                    <small>
+                      {b.code} · {b.breed || "Sin raza registrada"}
+                    </small>
+                  </span>
+                </label>
+                {selected.has(b.id) && index.has(b) && (
+                  <DuplicateChoice
+                    bird={b}
+                    matches={index.matches(b)}
+                    value={decisions[b.id]}
+                    busy={busy}
+                    change={(decision) =>
+                      setDecisions({ ...decisions, [b.id]: decision })
+                    }
+                  />
                 )}
-              </label>
+              </div>
             ))}
           </div>
         )}
       </PagedList>
-      <label>
-        Códigos duplicados
-        <select
-          value={mode}
-          disabled={busy}
-          onChange={(e) => setMode(e.target.value)}
-        >
-          <option value="skip">Omitir los registros duplicados</option>
-          <option value="update">Actualizar los registros existentes</option>
-        </select>
-      </label>
+      {conflicts.length > 0 && (
+        <div className="bulk-decisions">
+          <h4>Resolver las coincidencias seleccionadas</h4>
+          <p>
+            Aplica una decisión al lote y ajusta los casos particulares antes de
+            confirmar. Nunca se reemplazan dos filas sobre el mismo animal.
+          </p>
+          {(["skip", "keep", "replace"] as const).map((action) => (
+            <button
+              key={action}
+              type="button"
+              className="btn"
+              disabled={busy}
+              onClick={() => {
+                const next = { ...decisions };
+                for (const b of conflicts) {
+                  const matches = index.matches(b);
+                  if (action === "replace" && matches.length !== 1) continue;
+                  next[b.id] = {
+                    action,
+                    target: matches.length === 1 ? matches[0].key : undefined,
+                  };
+                }
+                setDecisions(next);
+              }}
+            >
+              {action === "skip"
+                ? "Omitir coincidencias"
+                : action === "keep"
+                  ? "Conservar todos como distintos"
+                  : "Reemplazar coincidencias únicas"}
+            </button>
+          ))}
+          <p className="help">
+            Si varias filas reemplazan el mismo destino, la confirmación te
+            pedirá corregirlo. «Conservar todos» permite nombres y placas
+            repetidos sin sobrescribir registros.
+          </p>
+        </div>
+      )}
       <p className="help">
-        Los registros con errores se omiten. Actualizar reemplaza la ficha y sus
-        fotos con las del archivo, así como los criaderos vinculados del mismo
-        nombre. Los progenitores no seleccionados solo se enlazan si ya existen
-        en destino con el mismo código; no se agregan animales adicionales.
+        Los registros con errores se omiten. Reemplazar conserva el ID del
+        destino y cambia su ficha y fotos por las del archivo; conserva su
+        historial y actualiza los eventos importados del mismo ID. Padres y
+        fecha de nacimiento no generan coincidencias por sí solos. Los
+        progenitores no seleccionados solo se enlazan si ya existen en destino
+        con el mismo código; no se agregan animales adicionales.
       </p>
       <div className="modal-actions">
         <button className="btn" disabled={busy} onClick={cancel}>
@@ -145,6 +195,7 @@ export function ImportPreview({
           className="btn primary"
           disabled={
             busy ||
+            pending > 0 ||
             (!selected.size &&
               ((!preview.farms.length && !preview.events.length) ||
                 preview.birds.length > 0))
