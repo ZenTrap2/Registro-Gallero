@@ -1536,14 +1536,10 @@ function BirdForm({
               min="0"
               max="9007199254740991"
               step="1"
-              aria-describedby="pl-help"
               placeholder="Sin datos registrados"
               value={b.pl ?? ""}
               onChange={(e) => field("pl", e.target.value)}
             />
-            <small id="pl-help" className="field-help">
-              Cantidad de criaderos que ha tenido. No requiere indicar cuáles.
-            </small>
           </label>
           <label>
             Peso en kg (opcional)
