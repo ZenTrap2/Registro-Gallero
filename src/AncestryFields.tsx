@@ -1,3 +1,4 @@
+import { Attachments } from "./Attachments";
 import { useMemo, useState } from "react";
 import type { Bird } from "./data";
 import {
@@ -97,6 +98,7 @@ export function AncestryFields({
                       placeholder="Sin datos registrados"
                       onChange={(e) =>
                         update(path, {
+                          ...own,
                           name: e.target.value,
                           details: own?.details
                             ? { ...own.details, name: e.target.value }
@@ -112,6 +114,79 @@ export function AncestryFields({
                         : "Heredado del progenitor registrado"}
                       . Se actualiza con su ficha.
                     </small>
+                  )}
+                  {!inherited && (
+                    <div className="ancestor-life">
+                      <label className="checkbox">
+                        <input
+                          type="checkbox"
+                          checked={info?.deceased === true}
+                          onChange={(e) =>
+                            change({
+                              ...bird,
+                              ancestry: {
+                                ...bird.ancestry,
+                                [path]: {
+                                  ...own,
+                                  name: info?.name || "",
+                                  deceased: e.target.checked,
+                                  deathDate: e.target.checked
+                                    ? own?.deathDate
+                                    : "",
+                                  ...(own?.details
+                                    ? {
+                                        details: {
+                                          ...own.details,
+                                          deceased: e.target.checked,
+                                          deathDate: e.target.checked
+                                            ? own.deathDate
+                                            : "",
+                                        },
+                                      }
+                                    : {}),
+                                },
+                              },
+                            })
+                          }
+                        />
+                        Fallecido (opcional)
+                      </label>
+                      {info?.deceased && (
+                        <label>
+                          Fallecimiento de {ancestorLabel(path).toLowerCase()}{" "}
+                          (opcional)
+                          <input
+                            type="date"
+                            max={new Date().toLocaleDateString("en-CA", {
+                              timeZone: "America/Caracas",
+                            })}
+                            min={info.details?.birth || undefined}
+                            value={info.deathDate || ""}
+                            onChange={(e) =>
+                              change({
+                                ...bird,
+                                ancestry: {
+                                  ...bird.ancestry,
+                                  [path]: {
+                                    ...own,
+                                    name: info.name,
+                                    deathDate: e.target.value,
+                                    ...(own?.details
+                                      ? {
+                                          details: {
+                                            ...own.details,
+                                            deathDate: e.target.value,
+                                          },
+                                        }
+                                      : {}),
+                                  },
+                                },
+                              })
+                            }
+                          />
+                        </label>
+                      )}
+                    </div>
                   )}
                   <div className="ancestor-actions">
                     {!inherited && (
@@ -239,6 +314,19 @@ export function Pedigree({
                     <strong>{a?.name || "Sin datos registrados"}</strong>
                   )}
                   {a?.details?.code && <span>{a.details.code}</span>}
+                  {!!a?.details?.attachments?.length && (
+                    <details>
+                      <summary>
+                        Comprobantes ({a.details.attachments.length})
+                      </summary>
+                      <Attachments items={a.details.attachments} readOnly />
+                    </details>
+                  )}
+                  {a?.deceased && (
+                    <small>
+                      Fallecido{a.deathDate ? ` · ${a.deathDate}` : ""}
+                    </small>
+                  )}
                 </div>
               );
             })}

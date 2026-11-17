@@ -116,8 +116,9 @@ export function ExportDialog({
         <span>
           <strong>Exportar JSON</strong>
           <small>
-            Incluye fotografías originales y registros de salud. La copia
-            completa conserva también los eventos generales y la configuración.
+            Incluye fotografías originales, comprobantes de ascendencia y
+            registros de salud. La copia completa conserva también los eventos
+            generales y la configuración.
           </small>
         </span>
       </button>
@@ -131,7 +132,7 @@ export function ExportDialog({
           <strong>Exportar CSV</strong>
           <small>
             Datos de texto y vínculos por código. No incluye archivos de imagen
-            ni eventos.
+            ni comprobantes ni eventos.
           </small>
         </span>
       </button>

@@ -1,4 +1,70 @@
-import{describe,it,expect,vi}from'vitest';import{saveFile,fileSuccess}from'../src/files';
-const mocks=vi.hoisted(()=>({native:vi.fn(()=>true),write:vi.fn(),share:vi.fn()}));
-vi.mock('@capacitor/core',()=>({Capacitor:{isNativePlatform:mocks.native}}));vi.mock('@capacitor/filesystem',()=>({Directory:{Cache:'CACHE'},Filesystem:{writeFile:mocks.write}}));vi.mock('@capacitor/share',()=>({Share:{share:mocks.share}}));
-describe('Exportación en Android',()=>{it('conserva el contenido UTF-8 de una copia JSON y comparte el archivo local',async()=>{const content=JSON.stringify({name:'Ámbar',notes:'Cuidado y genealogía'});mocks.write.mockResolvedValue({uri:'content://com.registrogallero.app.fileprovider/cache/exports/copia.json'});mocks.share.mockResolvedValue({});const destination=await saveFile('copia.json',new Blob([content],{type:'application/json'}));expect(destination).toBe('share');const options=mocks.write.mock.calls.at(-1)![0];expect(Buffer.from(options.data,'base64').toString('utf8')).toBe(content);expect(options.directory).toBe('CACHE');expect(options.path).toBe('exports/copia.json');expect(mocks.share).toHaveBeenCalledWith(expect.objectContaining({url:expect.stringContaining('content://')}));expect(fileSuccess(destination)).toContain('compartir')});it('informa el error si Android no puede guardar el archivo',async()=>{mocks.write.mockRejectedValueOnce(Error('Sin espacio disponible'));await expect(saveFile('ficha.pdf',new Blob(['test']))).rejects.toThrow('Sin espacio disponible')})});
+import { describe, it, expect, vi } from "vitest";
+import { saveFile, fileSuccess } from "../src/files";
+const mocks = vi.hoisted(() => ({
+  native: vi.fn(() => true),
+  write: vi.fn(),
+  append: vi.fn(),
+  remove: vi.fn(),
+  share: vi.fn(),
+}));
+vi.mock("@capacitor/core", () => ({
+  Capacitor: { isNativePlatform: mocks.native },
+}));
+vi.mock("@capacitor/filesystem", () => ({
+  Directory: { Cache: "CACHE" },
+  Filesystem: {
+    writeFile: mocks.write,
+    appendFile: mocks.append,
+    deleteFile: mocks.remove,
+  },
+}));
+vi.mock("@capacitor/share", () => ({ Share: { share: mocks.share } }));
+describe("Exportación en Android", () => {
+  it("conserva el contenido UTF-8 de una copia JSON y comparte el archivo local", async () => {
+    const content = JSON.stringify({
+      name: "Ámbar",
+      notes: "Cuidado y genealogía",
+    });
+    mocks.write.mockResolvedValue({
+      uri: "content://com.registrogallero.app.fileprovider/cache/exports/copia.json",
+    });
+    mocks.share.mockResolvedValue({});
+    const destination = await saveFile(
+      "copia.json",
+      new Blob([content], { type: "application/json" }),
+    );
+    expect(destination).toBe("share");
+    const options = mocks.write.mock.calls.at(-1)![0];
+    expect(Buffer.from(options.data, "base64").toString("utf8")).toBe(content);
+    expect(options.directory).toBe("CACHE");
+    expect(options.path).toBe("exports/copia.json");
+    expect(mocks.share).toHaveBeenCalledWith(
+      expect.objectContaining({ url: expect.stringContaining("content://") }),
+    );
+    expect(fileSuccess(destination)).toContain("compartir");
+  });
+  it("informa el error si Android no puede guardar el archivo", async () => {
+    mocks.write.mockRejectedValueOnce(Error("Sin espacio disponible"));
+    await expect(saveFile("ficha.pdf", new Blob(["test"]))).rejects.toThrow(
+      "Sin espacio disponible",
+    );
+  });
+});
+
+it("escribe y comparte archivos grandes en bloques sin alterar sus bytes", async () => {
+  mocks.write.mockClear();
+  mocks.append.mockClear();
+  mocks.write.mockResolvedValue({ uri: "content://cache/large.pdf" });
+  mocks.append.mockResolvedValue({});
+  const bytes = Uint8Array.from(
+    { length: 2 * 1024 * 1024 + 17 },
+    (_, i) => i % 251,
+  );
+  await saveFile("large.pdf", new Blob([bytes]));
+  const chunks = [
+    mocks.write.mock.calls[0][0].data,
+    ...mocks.append.mock.calls.map((call) => call[0].data),
+  ].map((value) => Buffer.from(value, "base64"));
+  expect(Buffer.compare(Buffer.concat(chunks), Buffer.from(bytes))).toBe(0);
+  expect(mocks.append).toHaveBeenCalledTimes(4);
+});

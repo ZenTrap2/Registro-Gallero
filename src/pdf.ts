@@ -322,6 +322,11 @@ function* buildPDF(
       [cfg.catalogs.breed.label, b.breed],
       [cfg.catalogs.color.label, b.color],
       ["Marca", b.mark],
+      [
+        "Estado vital",
+        b.deceased === undefined ? "" : b.deceased ? "Fallecido" : "Vivo",
+      ],
+      ["Fallecimiento", date(b.deathDate || "")],
       ["Nacimiento", date(b.birth)],
       ["Edad aproximada", b.age],
       [
@@ -388,6 +393,15 @@ function* buildPDF(
           section("", `Detalles: ${ancestorLabel(path)}`);
           fields([
             ["Nombre", entry.name],
+            [
+              "Estado vital",
+              entry.deceased === undefined
+                ? ""
+                : entry.deceased
+                  ? "Fallecido"
+                  : "Vivo",
+            ],
+            ["Fallecimiento", date(entry.deathDate || "")],
             ["Código / placa", a.code],
             [cfg.catalogs.breed.label, a.breed],
             [cfg.catalogs.color.label, a.color],
@@ -537,6 +551,7 @@ export async function exportBirdPDF(
             ),
           },
       options.includePhotos !== false,
+      false,
     );
     await new Promise((r) => setTimeout(r, 0));
     step = iterator.next(bird);

@@ -15,3 +15,5 @@ android/app/src/main/assets/capacitor.plugins.json
 *.keystore
 
 android/.kotlin/
+
+.stress-output/

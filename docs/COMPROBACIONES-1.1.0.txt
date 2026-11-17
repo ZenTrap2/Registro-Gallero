@@ -1,0 +1,2 @@
+bafe0328b4b7fe1694554cdf2db43eafa4d49d6f799314f9bed2270178ea7626  Registro-Gallero-1.1.0-Windows-x64-Portable.exe
+2ed5fd4a9158a6b588436acefe07d9dc097315ce875e56a7505f097aa331329e  Registro-Gallero-1.1.0-Android-Prueba.apk

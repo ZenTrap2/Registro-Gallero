@@ -177,13 +177,16 @@ export async function readDB(
   }
 }
 function dataPhoto(value: string) {
-  const match = /^data:image\/(jpeg|png);base64,([A-Za-z0-9+/=]+)$/.exec(value);
+  const match =
+    /^data:((?:image\/(?:jpeg|png|webp))|application\/pdf|text\/plain|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document);base64,([A-Za-z0-9+/=]+)$/.exec(
+      value,
+    );
   if (!match)
-    throw Error("Una fotografía no tiene un formato JPG o PNG válido.");
+    throw Error("Un archivo adjunto no tiene un formato local compatible.");
   const raw = atob(match[2]),
     bytes = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-  return new Blob([bytes], { type: "image/" + match[1] });
+  return new Blob([bytes], { type: match[1] });
 }
 async function thumbnail(blob: Blob) {
   if (typeof createImageBitmap !== "function") return blob;
@@ -377,7 +380,7 @@ export async function getPhoto(reference: string, small = false) {
       tx.objectStore("photos").get(photoId(reference)),
     );
   if (!record)
-    throw Error("No se encontró una fotografía en el almacenamiento local.");
+    throw Error("No se encontró el archivo en el almacenamiento local.");
   return small ? record.thumbnail : record.blob;
 }
 export async function photoDataURL(value: string) {
@@ -392,8 +395,28 @@ export async function photoDataURL(value: string) {
 export async function hydrateBird(
   bird: Bird,
   includePhotos = true,
+  includeAttachments = true,
 ): Promise<Bird> {
+  let source = bird;
+  if (!includeAttachments)
+    source = {
+      ...bird,
+      attachments: [],
+      ancestry: bird.ancestry
+        ? Object.fromEntries(
+            Object.entries(bird.ancestry).map(([path, e]) => [
+              path,
+              {
+                ...e,
+                ...(e.details
+                  ? { details: { ...e.details, attachments: [] } }
+                  : {}),
+              },
+            ]),
+          )
+        : undefined,
+    };
   return includePhotos
-    ? mapBirdPhotos(bird, photoDataURL)
-    : withoutPhotos(bird);
+    ? mapBirdPhotos(source, photoDataURL)
+    : withoutPhotos(source);
 }

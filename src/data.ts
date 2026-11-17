@@ -1,4 +1,9 @@
 import {
+  type Attachment,
+  validateAttachments,
+  validateLife,
+} from "./attachment-data";
+import {
   type AncestorEntry,
   ancestorAt,
   allBirdPhotos,
@@ -44,6 +49,9 @@ export type Bird = {
   lastReview: string;
   photos: string[];
   demo?: boolean;
+  deceased?: boolean;
+  deathDate?: string;
+  attachments?: Attachment[];
   customValues?: Record<string, string>;
   ancestry?: Record<string, AncestorEntry>;
 };
@@ -190,6 +198,8 @@ export function toCSV(
         "customValues",
         "customFields",
         "ancestry",
+        "deceased",
+        "deathDate",
       ].join(","),
       ...birds.map((b, index) =>
         [
@@ -222,6 +232,8 @@ export function toCSV(
               ),
             ),
           ),
+          cell(b.deceased === undefined ? "" : String(b.deceased)),
+          cell(b.deathDate || ""),
         ].join(","),
       ),
     ].join("\r\n")
@@ -478,6 +490,21 @@ export function validateImport(raw: unknown): {
       errors.push(`Fila ${i + 1}: ${(e as Error).message}`);
       return;
     }
+    const deceased =
+      b.deceased === "true"
+        ? true
+        : b.deceased === "false"
+          ? false
+          : b.deceased === ""
+            ? undefined
+            : b.deceased;
+    try {
+      validateLife(deceased, b.deathDate, b.birth as string);
+      validateAttachments(b.attachments);
+    } catch (e) {
+      errors.push(`Fila ${i + 1}: ${(e as Error).message}`);
+      return;
+    }
     let ancestry: Record<string, AncestorEntry> | undefined;
     try {
       const source =
@@ -503,6 +530,7 @@ export function validateImport(raw: unknown): {
             (entry.birdId !== undefined && typeof entry.birdId !== "string")
           )
             throw Error("Nombre o posición de ancestro inválidos.");
+          validateLife(entry.deceased, entry.deathDate, entry.details?.birth);
           let details: Bird | undefined;
           if (entry.details) {
             if (entry.details.ancestry !== undefined)
@@ -545,6 +573,10 @@ export function validateImport(raw: unknown): {
           }
           ancestry[path] = {
             name: entry.name.trim(),
+            ...(entry.deceased !== undefined
+              ? { deceased: entry.deceased }
+              : {}),
+            ...(entry.deathDate ? { deathDate: entry.deathDate } : {}),
             ...(entry.birdId ? { birdId: entry.birdId } : {}),
             ...(details ? { details } : {}),
           };
@@ -561,6 +593,9 @@ export function validateImport(raw: unknown): {
       code,
       photos: photos as string[],
       demo: b.demo === true,
+      ...(deceased !== undefined ? { deceased: deceased as boolean } : {}),
+      ...(b.deathDate ? { deathDate: String(b.deathDate) } : {}),
+      ...(b.attachments ? { attachments: b.attachments as Attachment[] } : {}),
       ...(ancestry ? { ancestry } : {}),
       ...(customValues
         ? { customValues: Object.fromEntries(Object.entries(customValues)) }
@@ -874,6 +909,11 @@ export function filterBirds(db: Database, f: BirdFilters) {
   const query = searchText(f.search),
     byId = new Map(db.birds.map((b) => [b.id, b])),
     farms = new Map((db.farms || []).map((farm) => [farm.id, farm.name]));
+  let texts = cachedSearch.get(db);
+  if (!texts) {
+    texts = new Map();
+    cachedSearch.set(db, texts);
+  }
   return db.birds.filter((b) => {
     if (
       (f.breed && b.breed !== f.breed) ||
@@ -893,27 +933,34 @@ export function filterBirds(db: Database, f: BirdFilters) {
     )
       return false;
     if (!query) return true;
-    return searchText(
-      [
-        b.name,
-        b.code,
-        b.breed,
-        b.color,
-        b.origin,
-        b.mark,
-        b.purpose,
-        b.notes,
-        b.age,
-        b.birth,
-        b.arrival,
-        b.lastReview,
-        b.status,
-        b.weightKg,
-        farms.get(b.farmId || ""),
-        byId.get(b.father)?.name,
-        byId.get(b.mother)?.name,
-      ].join(" "),
-    ).includes(query);
+    let text = texts!.get(b.id);
+    if (text === undefined) {
+      text = searchText(
+        [
+          b.name,
+          b.code,
+          b.breed,
+          b.color,
+          b.origin,
+          b.mark,
+          b.purpose,
+          b.notes,
+          b.age,
+          b.birth,
+          b.arrival,
+          b.lastReview,
+          b.status,
+          b.weightKg,
+          farms.get(b.farmId || ""),
+          byId.get(b.father)?.name,
+          byId.get(b.mother)?.name,
+          ...Object.values(b.ancestry || {}).map((a) => a.name),
+          ...Object.values(b.customValues || {}),
+        ].join(" "),
+      );
+      texts!.set(b.id, text);
+    }
+    return text.includes(query);
   });
 }
 

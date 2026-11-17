@@ -1,3 +1,5 @@
+import { Attachments } from "./Attachments";
+import { validateLife, validateAttachments } from "./attachment-data";
 import { AncestryFields, Pedigree } from "./AncestryFields";
 import {
   type AncestorEntry,
@@ -708,6 +710,17 @@ export default function App() {
                           ["Código / placa", active.code],
                           ["ID interno", active.id],
                           [
+                            "Estado vital",
+                            active.deceased === undefined
+                              ? "Sin datos registrados"
+                              : active.deceased
+                                ? "Fallecido"
+                                : "Vivo",
+                          ],
+                          ...(active.deathDate
+                            ? [["Fallecimiento", fmt(active.deathDate)]]
+                            : []),
+                          [
                             "Criadero",
                             db.farms?.find((f) => f.id === active.farmId)?.name,
                           ],
@@ -738,6 +751,7 @@ export default function App() {
                           </div>
                         ))}
                       </dl>
+                      <Attachments items={active.attachments} readOnly />
                       <h3>Notas generales</h3>
                       <p className="preserve">
                         {active.notes || "Sin datos registrados"}
@@ -1310,6 +1324,7 @@ function BirdForm({
   const [b, setB] = useState({ ...bird, photos: [...bird.photos] }),
     [err, setErr] = useState(""),
     [uploading, setUploading] = useState(false),
+    [attaching, setAttaching] = useState(false),
     [allowDuplicate, setAllowDuplicate] = useState(false),
     [ancestorEdit, setAncestorEdit] = useState<{
       path: string;
@@ -1439,6 +1454,10 @@ function BirdForm({
             return;
           }
           try {
+            validateLife(b.deceased, b.deathDate, b.birth);
+            for (const a of Object.values(b.ancestry || {}))
+              validateLife(a.deceased, a.deathDate, a.details?.birth);
+            validateAttachments(b.attachments, true);
             validateCustomValues(b.customValues, cfg.customFields || []);
           } catch (error) {
             setErr((error as Error).message);
@@ -1585,6 +1604,35 @@ function BirdForm({
             />
           </label>
         </div>
+        <fieldset className="life-fields">
+          <legend>Estado vital (opcional)</legend>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={b.deceased === true}
+              onChange={(e) =>
+                setB({
+                  ...b,
+                  deceased: e.target.checked,
+                  deathDate: e.target.checked ? b.deathDate : "",
+                })
+              }
+            />
+            Fallecido
+          </label>
+          {b.deceased && (
+            <label>
+              Fecha de fallecimiento (opcional)
+              <input
+                type="date"
+                value={b.deathDate || ""}
+                min={b.birth || undefined}
+                max={today()}
+                onChange={(e) => setB({ ...b, deathDate: e.target.value })}
+              />
+            </label>
+          )}
+        </fieldset>
         {!ancestorMode && (
           <AncestryFields
             bird={b}
@@ -1623,6 +1671,11 @@ function BirdForm({
             Confirmo que es otro animal y quiero conservar la misma placa/código
           </label>
         )}
+        <Attachments
+          items={b.attachments}
+          onBusyChange={setAttaching}
+          change={(attachments) => setB((x) => ({ ...x, attachments }))}
+        />
         <h3>Fotos (opcional)</h3>
         <label
           className="drop-zone"
@@ -1672,7 +1725,10 @@ function BirdForm({
           <button type="button" className="btn" onClick={close}>
             Cancelar
           </button>
-          <button className="btn primary" disabled={busy || uploading}>
+          <button
+            className="btn primary"
+            disabled={busy || uploading || attaching}
+          >
             {uploading
               ? "Procesando fotos…"
               : busy
@@ -1688,6 +1744,8 @@ function BirdForm({
             ...emptyBird(),
             ...ancestorEdit.entry.details,
             name: ancestorEdit.entry.name,
+            deceased: ancestorEdit.entry.deceased,
+            deathDate: ancestorEdit.entry.deathDate,
           }}
           birds={birds}
           farms={farms}
@@ -1699,7 +1757,12 @@ function BirdForm({
               ...previous,
               ancestry: {
                 ...previous.ancestry,
-                [ancestorEdit.path]: { name: details.name, details: snapshot },
+                [ancestorEdit.path]: {
+                  name: details.name,
+                  deceased: details.deceased,
+                  deathDate: details.deathDate,
+                  details: snapshot,
+                },
               },
             }));
             setAncestorEdit(null);

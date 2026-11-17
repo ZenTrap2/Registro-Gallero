@@ -685,3 +685,64 @@ it("crea y confirma una categoría adicional numérica desde el editor de Admini
     active: true,
   });
 });
+it("conserva el fallecimiento de un ancestro manual al editar su nombre y guarda un comprobante PDF", async () => {
+  await ready();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Registrar gallo" }));
+  const dialog = screen.getByRole("dialog", { name: "Registrar un gallo" });
+  await user.type(within(dialog).getByLabelText("Nombre *"), "Prueba");
+  await user.type(within(dialog).getByLabelText("Código / placa *"), "PR");
+  await user.click(
+    within(dialog).getByRole("checkbox", { name: "Fallecido", exact: true }),
+  );
+  await user.type(
+    within(dialog).getByLabelText("Fecha de fallecimiento (opcional)"),
+    "2026-01-01",
+  );
+  await user.type(
+    within(dialog).getByLabelText("Madre", { exact: true }),
+    "Clara",
+  );
+  const mother = within(dialog)
+    .getByLabelText("Madre", { exact: true })
+    .closest(".ancestor-field")!;
+  await user.click(
+    within(mother as HTMLElement).getByRole("checkbox", {
+      name: "Fallecido (opcional)",
+    }),
+  );
+  await user.type(
+    within(mother as HTMLElement).getByLabelText(
+      "Fallecimiento de madre (opcional)",
+    ),
+    "2020-01-01",
+  );
+  await user.type(
+    within(dialog).getByLabelText("Madre", { exact: true }),
+    " Azul",
+  );
+  const file = new File(["%PDF-1.4\n%%EOF"], "pedigri.pdf", {
+    type: "application/pdf",
+  });
+  await user.upload(
+    within(dialog).getByLabelText("Adjuntar comprobantes de ascendencia"),
+    file,
+  );
+  await within(dialog).findByText(
+    "Comprobantes preparados. Guarda el registro para conservarlos.",
+  );
+  await user.click(
+    within(dialog).getByRole("button", { name: "Guardar registro" }),
+  );
+  await waitFor(() => expect(mocks.write).toHaveBeenCalled());
+  const b = mocks.write.mock.calls.at(-1)![0].birds.at(-1);
+  expect(b.deceased).toBe(true);
+  expect(b.deathDate).toBe("2026-01-01");
+  expect(b.ancestry.m).toMatchObject({
+    name: "Clara Azul",
+    deceased: true,
+    deathDate: "2020-01-01",
+  });
+  expect(b.attachments[0].name).toBe("pedigri.pdf");
+  expect(b.attachments[0].source).toMatch(/^data:application\/pdf;base64,/);
+});

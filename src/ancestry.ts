@@ -1,5 +1,11 @@
 import type { Bird } from "./data";
-export type AncestorEntry = { name: string; birdId?: string; details?: Bird };
+export type AncestorEntry = {
+  name: string;
+  birdId?: string;
+  details?: Bird;
+  deceased?: boolean;
+  deathDate?: string;
+};
 export const ancestorPaths = (generation: number): string[] =>
   generation === 0
     ? [""]
@@ -40,6 +46,8 @@ export function ancestorAt(
           name: registered.name,
           birdId: registered.id,
           details: registered,
+          deceased: registered.deceased,
+          deathDate: registered.deathDate,
         };
       const inherited = ancestorAt(registered, path.slice(n), byId);
       if (inherited) return inherited;
@@ -50,9 +58,11 @@ export function ancestorAt(
 export function allBirdPhotos(bird: Bird): string[] {
   return [
     ...bird.photos,
-    ...Object.values(bird.ancestry || {}).flatMap(
-      (e) => e.details?.photos || [],
-    ),
+    ...(bird.attachments || []).map((a) => a.source),
+    ...Object.values(bird.ancestry || {}).flatMap((e) => [
+      ...(e.details?.photos || []),
+      ...(e.details?.attachments || []).map((a) => a.source),
+    ]),
   ];
 }
 export async function mapBirdPhotos(
@@ -68,11 +78,31 @@ export async function mapBirdPhotos(
           details: {
             ...entry.details,
             photos: await Promise.all(entry.details.photos.map(map)),
+            ...(entry.details.attachments
+              ? {
+                  attachments: await Promise.all(
+                    entry.details.attachments.map(async (a) => ({
+                      ...a,
+                      source: await map(a.source),
+                    })),
+                  ),
+                }
+              : {}),
           },
         };
   return {
     ...bird,
     photos: await Promise.all(bird.photos.map(map)),
+    ...(bird.attachments
+      ? {
+          attachments: await Promise.all(
+            bird.attachments.map(async (a) => ({
+              ...a,
+              source: await map(a.source),
+            })),
+          ),
+        }
+      : {}),
     ...(ancestry ? { ancestry } : {}),
   };
 }
@@ -80,6 +110,7 @@ export function withoutPhotos(bird: Bird): Bird {
   return {
     ...bird,
     photos: [],
+    ...(bird.attachments ? { attachments: [] } : {}),
     ...(bird.ancestry
       ? {
           ancestry: Object.fromEntries(
@@ -87,7 +118,15 @@ export function withoutPhotos(bird: Bird): Bird {
               p,
               {
                 ...e,
-                ...(e.details ? { details: { ...e.details, photos: [] } } : {}),
+                ...(e.details
+                  ? {
+                      details: {
+                        ...e.details,
+                        photos: [],
+                        ...(e.details.attachments ? { attachments: [] } : {}),
+                      },
+                    }
+                  : {}),
               },
             ]),
           ),
@@ -174,7 +213,14 @@ export function detachAncestor(
     ancestry: Object.fromEntries(
       Object.entries(expanded.ancestry || {}).map(([p, a]) => [
         p,
-        a.birdId === removedId ? { name: a.name, details: a.details } : a,
+        a.birdId === removedId
+          ? {
+              name: a.name,
+              details: a.details,
+              deceased: a.deceased,
+              deathDate: a.deathDate,
+            }
+          : a,
       ]),
     ),
   };

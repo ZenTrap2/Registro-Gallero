@@ -324,6 +324,10 @@ export function AdvancedFilters({
 }
 const help = [
   [
+    "Estado vital y comprobantes de ascendencia",
+    "El animal principal y cada ancestro manual permiten indicar fallecimiento con una casilla opcional y una fecha, también opcional. No se exige esta información ni se inventa para registros antiguos. Puedes adjuntar hasta ocho comprobantes por animal o ancestro: PDF, JPG, PNG, WebP, TXT o DOCX, hasta 10 MB por archivo. En los ancestros, abre Añadir/Editar detalles para adjuntarlos. Se guardan localmente al guardar la ficha; puedes descargarlos o quitarlos antes de guardar. JSON conserva los archivos; CSV no incluye los adjuntos. En la ficha de linaje puedes desplegar los comprobantes del ancestro.",
+  ],
+  [
     "Pedigrí de cuatro generaciones",
     "El formulario permite registrar padres, abuelos, bisabuelos y tatarabuelos, hasta 30 posiciones. Escribe nombres aunque no existan en la base. «Añadir detalles» guarda una ficha del ancestro dentro del linaje sin crear un animal en Mis gallos. «Añadir desde el registro» vincula un animal y hereda su linaje conocido. No se inventan datos faltantes. Las secciones se despliegan según necesites. En PDF aparecen los nombres; activa «Incluir detalles de los ancestros en el PDF» si también quieres sus datos completos.",
   ],
@@ -365,7 +369,7 @@ const help = [
   ],
   [
     "PDF, JSON y CSV",
-    "«Exportar ficha PDF» descarga la ficha abierta, sus fotos y su historial individual de salud. En «Mis gallos» puedes descargar las fichas de los resultados filtrados en un PDF. JSON es la copia completa: incluye criaderos, fotos, linaje y eventos. CSV contiene texto y el nombre del criadero; no incluye fotos ni eventos. PDF es para consultar o compartir, no para restaurar datos.",
+    "«Exportar ficha PDF» descarga la ficha abierta, sus fotos y su historial individual de salud. En «Mis gallos» puedes descargar las fichas de los resultados filtrados en un PDF. JSON es la copia completa: incluye criaderos, fotos, linaje y eventos. CSV contiene texto y el nombre del criadero; no incluye fotos, comprobantes ni eventos. PDF es para consultar o compartir, no para restaurar datos.",
   ],
   [
     "Importar y resolver duplicados",
