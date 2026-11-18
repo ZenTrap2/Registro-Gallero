@@ -6,11 +6,13 @@ export function Modal({
   children,
   close,
   busy = false,
+  wide = false,
 }: {
   title: string;
   children: ReactNode;
   close: () => void;
   busy?: boolean;
+  wide?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null),
     titleId = useId();
@@ -26,8 +28,11 @@ export function Modal({
   return (
     <dialog
       ref={ref}
+      className={wide ? "wide-dialog" : undefined}
       aria-labelledby={titleId}
       onCancel={(e) => {
+        if (e.target !== ref.current) return;
+        e.stopPropagation();
         e.preventDefault();
         if (!busy) close();
       }}

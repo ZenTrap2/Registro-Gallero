@@ -1,3 +1,8 @@
+import {
+  storeNativeFile,
+  readNativeFile,
+  removeNativeFile,
+} from "./native-media";
 import { allBirdPhotos, mapBirdPhotos, withoutPhotos } from "./ancestry";
 import {
   examples,
@@ -12,7 +17,10 @@ export type OperationProgress = {
   total: number;
 };
 export type ProgressHandler = (progress: OperationProgress) => void;
-type PhotoRecord = { id: string; blob: Blob; thumbnail: Blob };
+type PhotoRecord = { id: string } & (
+  | { blob: Blob; thumbnail: Blob; nativeType?: undefined }
+  | { nativeType: string; thumbnail?: Blob; blob?: undefined }
+);
 type State = {
   revision: number;
   hasFarms: boolean;
@@ -246,12 +254,16 @@ async function performWrite(
     newPhotos = new Map<string, PhotoRecord>(),
     prepared = new Map<string, Promise<string>>(),
     birds: Bird[] = [];
-  const totalPhotos = data.birds.reduce(
-    (n, b) => n + allBirdPhotos(b).filter((p) => !isPhotoReference(p)).length,
-    0,
+  const pending = data.birds.map(
+    (b) => allBirdPhotos(b).filter((p) => !isPhotoReference(p)).length,
   );
+  const totalPhotos = pending.reduce((sum, count) => sum + count, 0);
   let completed = 0;
-  for (const b of data.birds) {
+  for (const [index, b] of data.birds.entries()) {
+    if (!pending[index]) {
+      birds.push(b);
+      continue;
+    }
     birds.push(
       await mapBirdPhotos(b, async (value) => {
         if (isPhotoReference(value)) {
@@ -268,8 +280,26 @@ async function performWrite(
               id = Array.from(new Uint8Array(digest))
                 .map((v) => v.toString(16).padStart(2, "0"))
                 .join("");
-            if (!before.photoIds.has(id) && !newPhotos.has(id))
-              newPhotos.set(id, { id, blob, thumbnail: await thumbnail(blob) });
+            if (!before.photoIds.has(id) && !newPhotos.has(id)) {
+              const small = blob.type.startsWith("image/")
+                ? await thumbnail(blob)
+                : undefined;
+              const stored = await storeNativeFile(
+                id,
+                blob,
+                value.slice(value.indexOf(",") + 1),
+              );
+              newPhotos.set(
+                id,
+                stored
+                  ? {
+                      id,
+                      nativeType: blob.type,
+                      thumbnail: small === blob ? undefined : small,
+                    }
+                  : { id, blob, thumbnail: small || blob },
+              );
+            }
             return "idb-photo:" + id;
           })();
           prepared.set(value, promise);
@@ -370,6 +400,9 @@ async function performWrite(
       }
     };
   });
+  for (const id of before.photoIds) {
+    if (!activePhotos.has(id)) await removeNativeFile(id).catch(() => {});
+  }
   onProgress?.({ label: "Datos guardados", completed: 1, total: 1 });
   return remember(canonical, expected + 1);
 }
@@ -381,7 +414,10 @@ export async function getPhoto(reference: string, small = false) {
     );
   if (!record)
     throw Error("No se encontró el archivo en el almacenamiento local.");
-  return small ? record.thumbnail : record.blob;
+  if (small && record.thumbnail) return record.thumbnail;
+  if (record.nativeType !== undefined)
+    return readNativeFile(record.id, record.nativeType);
+  return record.blob;
 }
 export async function photoDataURL(value: string) {
   if (!isPhotoReference(value)) return value;

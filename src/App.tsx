@@ -692,9 +692,9 @@ export default function App() {
                       <div className="gallery">
                         {active.photos.length ? (
                           active.photos.map((p, i) => (
-                            <img
+                            <Photo
                               key={i}
-                              src={p}
+                              source={p}
                               alt={`${active.name}, fotografía ${i + 1}`}
                             />
                           ))
@@ -1326,6 +1326,7 @@ function BirdForm({
     [uploading, setUploading] = useState(false),
     [attaching, setAttaching] = useState(false),
     [allowDuplicate, setAllowDuplicate] = useState(false),
+    [ancestryOpen, setAncestryOpen] = useState(false),
     [ancestorEdit, setAncestorEdit] = useState<{
       path: string;
       entry: AncestorEntry;
@@ -1342,6 +1343,10 @@ function BirdForm({
     const valid: string[] = [];
     const errors: string[] = [];
     for (const f of Array.from(files)) {
+      if (b.photos.length + valid.length >= 8) {
+        errors.push("Se permiten hasta 8 fotografías por registro.");
+        break;
+      }
       if (!["image/jpeg", "image/png"].includes(f.type)) {
         errors.push(`${f.name}: solo se acepta JPG o PNG.`);
         continue;
@@ -1369,8 +1374,6 @@ function BirdForm({
       }
     }
     setB((x) => ({ ...x, photos: [...x.photos, ...valid].slice(0, 8) }));
-    if (b.photos.length + valid.length > 8)
-      errors.push("Se permiten hasta 8 fotografías por registro.");
     setErr(errors.join(" "));
     setUploading(false);
   }
@@ -1634,12 +1637,13 @@ function BirdForm({
           )}
         </fieldset>
         {!ancestorMode && (
-          <AncestryFields
-            bird={b}
-            birds={birds}
-            change={setB}
-            details={(path, entry) => setAncestorEdit({ path, entry })}
-          />
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setAncestryOpen(true)}
+          >
+            <GitFork size={17} /> Ancestros
+          </button>
         )}
         <div className="form-grid">
           <CustomFieldInputs
@@ -1693,7 +1697,10 @@ function BirdForm({
             accept="image/jpeg,image/png"
             multiple
             disabled={uploading}
-            onChange={(e) => void photos(e.target.files)}
+            onChange={(e) => {
+              void photos(e.target.files);
+              e.target.value = "";
+            }}
           />
         </label>
         <div className="photo-previews">
@@ -1737,6 +1744,29 @@ function BirdForm({
           </button>
         </div>
       </form>
+      {ancestryOpen && (
+        <Modal
+          title="Árbol genealógico"
+          close={() => setAncestryOpen(false)}
+          wide
+        >
+          <AncestryFields
+            bird={b}
+            birds={birds}
+            change={setB}
+            details={(path, entry) => setAncestorEdit({ path, entry })}
+          />
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => setAncestryOpen(false)}
+            >
+              Volver a la ficha
+            </button>
+          </div>
+        </Modal>
+      )}
       {ancestorEdit && (
         <BirdForm
           ancestorMode

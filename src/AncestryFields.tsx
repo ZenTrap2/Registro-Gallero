@@ -20,6 +20,7 @@ export function AncestryFields({
   details: (path: string, entry: AncestorEntry) => void;
 }) {
   const byId = useMemo(() => new Map(birds.map((b) => [b.id, b])), [birds]);
+  const [selectedPath, setSelectedPath] = useState("f");
   const [choosing, setChoosing] = useState(""),
     [query, setQuery] = useState(""),
     [pending, setPending] = useState<{
@@ -70,215 +71,270 @@ export function AncestryFields({
           </button>
         </div>
       )}
-      <h3>Linaje · hasta cuatro generaciones</h3>
       <p className="help">
-        Escribe los nombres aunque los ancestros no estén registrados. Los
-        detalles son opcionales y no crean fichas en Mis gallos. Al elegir del
-        registro se heredan sus ancestros conocidos. El PDF incluye nombres; los
-        detalles solo se incluyen si lo eliges.
+        Selecciona un ancestro para editarlo o vincularlo al registro. Los
+        cambios se guardan con la ficha.
       </p>
-      {generationNames.map((title, i) => (
-        <details key={title} open={i === 0}>
-          <summary>
-            {title} · {2 ** (i + 1)} posiciones
-          </summary>
-          <div className="ancestor-fields">
-            {ancestorPaths(i + 1).map((path) => {
-              const info = ancestorAt(bird, path, byId),
-                own = bird.ancestry?.[path],
-                inherited = info?.birdId ? true : !!info && info !== own;
-              return (
-                <div className="ancestor-field" key={path}>
-                  <label>
-                    {ancestorLabel(path)}
+      <nav className="ancestor-generations" aria-label="Generaciones del árbol">
+        {generationNames.map((title, index) => (
+          <button
+            type="button"
+            className="btn"
+            key={title}
+            aria-pressed={selectedPath.length === index + 1}
+            onClick={() => {
+              const generation = index + 1;
+              setSelectedPath(
+                selectedPath.slice(0, generation).padEnd(generation, "f"),
+              );
+              setChoosing("");
+            }}
+          >
+            {title}
+          </button>
+        ))}
+      </nav>
+      <div
+        className="ancestor-tree-scroll"
+        role="region"
+        aria-label="Árbol de cuatro generaciones"
+        tabIndex={0}
+      >
+        <div className="ancestor-tree">
+          <div className="ancestor-root">
+            {bird.name.trim() || "Animal de la ficha"}
+          </div>
+          {generationNames.map((title, i) => (
+            <section
+              className="ancestor-generation"
+              key={title}
+              data-current={selectedPath.length === i + 1}
+            >
+              <h3>{title}</h3>
+              {ancestorPaths(i + 1).map((path) => {
+                const entry = ancestorAt(bird, path, byId);
+                return (
+                  <button
+                    type="button"
+                    key={path}
+                    className="ancestor-node"
+                    aria-label={
+                      ancestorLabel(path) +
+                      " " +
+                      (entry?.name || "Añadir ancestro")
+                    }
+                    data-branch={
+                      selectedPath.startsWith(path) ||
+                      path.startsWith(selectedPath)
+                    }
+                    aria-pressed={path === selectedPath}
+                    onClick={() => {
+                      setSelectedPath(path);
+                      setChoosing("");
+                    }}
+                  >
+                    <small>{ancestorLabel(path)}</small>
+                    <strong>{entry?.name || "Añadir ancestro"}</strong>
+                  </button>
+                );
+              })}
+            </section>
+          ))}
+        </div>
+      </div>
+      <div className="ancestor-fields ancestor-selected">
+        {[selectedPath].map((path) => {
+          const info = ancestorAt(bird, path, byId),
+            own = bird.ancestry?.[path],
+            inherited = info?.birdId ? true : !!info && info !== own;
+          return (
+            <div className="ancestor-field" key={path}>
+              <label>
+                {ancestorLabel(path)}
+                <input
+                  maxLength={150}
+                  value={info?.name || ""}
+                  readOnly={inherited}
+                  placeholder="Sin datos registrados"
+                  onChange={(e) =>
+                    update(path, {
+                      ...own,
+                      name: e.target.value,
+                      details: own?.details
+                        ? { ...own.details, name: e.target.value }
+                        : undefined,
+                    })
+                  }
+                />
+              </label>
+              {inherited && (
+                <small className="field-help">
+                  {info?.birdId
+                    ? "Vinculado al registro"
+                    : "Heredado del progenitor registrado"}
+                  . Se actualiza con su ficha.
+                </small>
+              )}
+              {!inherited && (
+                <div className="ancestor-life">
+                  <label className="checkbox">
                     <input
-                      maxLength={150}
-                      value={info?.name || ""}
-                      readOnly={inherited}
-                      placeholder="Sin datos registrados"
+                      type="checkbox"
+                      checked={info?.deceased === true}
                       onChange={(e) =>
-                        update(path, {
-                          ...own,
-                          name: e.target.value,
-                          details: own?.details
-                            ? { ...own.details, name: e.target.value }
-                            : undefined,
+                        change({
+                          ...bird,
+                          ancestry: {
+                            ...bird.ancestry,
+                            [path]: {
+                              ...own,
+                              name: info?.name || "",
+                              deceased: e.target.checked,
+                              deathDate: e.target.checked ? own?.deathDate : "",
+                              ...(own?.details
+                                ? {
+                                    details: {
+                                      ...own.details,
+                                      deceased: e.target.checked,
+                                      deathDate: e.target.checked
+                                        ? own.deathDate
+                                        : "",
+                                    },
+                                  }
+                                : {}),
+                            },
+                          },
                         })
                       }
                     />
+                    Fallecido (opcional)
                   </label>
-                  {inherited && (
-                    <small className="field-help">
-                      {info?.birdId
-                        ? "Vinculado al registro"
-                        : "Heredado del progenitor registrado"}
-                      . Se actualiza con su ficha.
-                    </small>
-                  )}
-                  {!inherited && (
-                    <div className="ancestor-life">
-                      <label className="checkbox">
-                        <input
-                          type="checkbox"
-                          checked={info?.deceased === true}
-                          onChange={(e) =>
-                            change({
-                              ...bird,
-                              ancestry: {
-                                ...bird.ancestry,
-                                [path]: {
-                                  ...own,
-                                  name: info?.name || "",
-                                  deceased: e.target.checked,
-                                  deathDate: e.target.checked
-                                    ? own?.deathDate
-                                    : "",
-                                  ...(own?.details
-                                    ? {
-                                        details: {
-                                          ...own.details,
-                                          deceased: e.target.checked,
-                                          deathDate: e.target.checked
-                                            ? own.deathDate
-                                            : "",
-                                        },
-                                      }
-                                    : {}),
-                                },
+                  {info?.deceased && (
+                    <label>
+                      Fallecimiento de {ancestorLabel(path).toLowerCase()}{" "}
+                      (opcional)
+                      <input
+                        type="date"
+                        max={new Date().toLocaleDateString("en-CA", {
+                          timeZone: "America/Caracas",
+                        })}
+                        min={info.details?.birth || undefined}
+                        value={info.deathDate || ""}
+                        onChange={(e) =>
+                          change({
+                            ...bird,
+                            ancestry: {
+                              ...bird.ancestry,
+                              [path]: {
+                                ...own,
+                                name: info.name,
+                                deathDate: e.target.value,
+                                ...(own?.details
+                                  ? {
+                                      details: {
+                                        ...own.details,
+                                        deathDate: e.target.value,
+                                      },
+                                    }
+                                  : {}),
                               },
-                            })
-                          }
-                        />
-                        Fallecido (opcional)
-                      </label>
-                      {info?.deceased && (
-                        <label>
-                          Fallecimiento de {ancestorLabel(path).toLowerCase()}{" "}
-                          (opcional)
-                          <input
-                            type="date"
-                            max={new Date().toLocaleDateString("en-CA", {
-                              timeZone: "America/Caracas",
-                            })}
-                            min={info.details?.birth || undefined}
-                            value={info.deathDate || ""}
-                            onChange={(e) =>
-                              change({
-                                ...bird,
-                                ancestry: {
-                                  ...bird.ancestry,
-                                  [path]: {
-                                    ...own,
-                                    name: info.name,
-                                    deathDate: e.target.value,
-                                    ...(own?.details
-                                      ? {
-                                          details: {
-                                            ...own.details,
-                                            deathDate: e.target.value,
-                                          },
-                                        }
-                                      : {}),
-                                  },
-                                },
-                              })
-                            }
-                          />
-                        </label>
-                      )}
-                    </div>
-                  )}
-                  <div className="ancestor-actions">
-                    {!inherited && (
-                      <button
-                        type="button"
-                        className="text-button"
-                        onClick={() => details(path, info || { name: "" })}
-                      >
-                        {info?.details ? "Editar detalles" : "Añadir detalles"}
-                      </button>
-                    )}
-                    {(!inherited || own?.birdId || path.length === 1) && (
-                      <button
-                        type="button"
-                        className="text-button"
-                        onClick={() => {
-                          setChoosing(choosing === path ? "" : path);
-                          setQuery("");
-                        }}
-                      >
-                        Añadir desde el registro
-                      </button>
-                    )}
-                    {(info?.name || info?.birdId) &&
-                      !(!own && inherited && path.length > 1) && (
-                        <button
-                          type="button"
-                          className="text-button"
-                          onClick={() => update(path, { name: "" })}
-                        >
-                          Desvincular / limpiar
-                        </button>
-                      )}
-                  </div>
-                  {choosing === path && (
-                    <div className="ancestor-picker">
-                      <label>
-                        Buscar registro para {ancestorLabel(path).toLowerCase()}
-                        <input
-                          value={query}
-                          onChange={(e) => setQuery(e.target.value)}
-                          placeholder="Nombre o placa/código"
-                        />
-                      </label>
-                      <div role="list" aria-label="Coincidencias de ancestros">
-                        {birds
-                          .filter(
-                            (b) =>
-                              b.id !== bird.id &&
-                              (b.name + " " + b.code)
-                                .toLocaleLowerCase("es")
-                                .includes(query.trim().toLocaleLowerCase("es")),
-                          )
-                          .slice(0, 30)
-                          .map((b) => (
-                            <div role="listitem" key={b.id}>
-                              <button
-                                type="button"
-                                className="ancestor-option"
-                                onClick={() => {
-                                  const entry = { name: b.name, birdId: b.id };
-                                  if (
-                                    Object.entries(bird.ancestry || {}).some(
-                                      ([key, a]) =>
-                                        key.startsWith(path) &&
-                                        key !== path &&
-                                        (a.name || a.birdId),
-                                    )
-                                  )
-                                    setPending({ path, entry });
-                                  else update(path, entry, true);
-                                  setChoosing("");
-                                }}
-                              >
-                                {b.name} · {b.code}
-                                <small>{b.id}</small>
-                              </button>
-                            </div>
-                          ))}
-                      </div>
-                      <p className="help">
-                        Se muestran hasta 30 resultados. Escribe para acotar la
-                        búsqueda.
-                      </p>
-                    </div>
+                            },
+                          })
+                        }
+                      />
+                    </label>
                   )}
                 </div>
-              );
-            })}
-          </div>
-        </details>
-      ))}
+              )}
+              <div className="ancestor-actions">
+                {!inherited && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => details(path, info || { name: "" })}
+                  >
+                    {info?.details ? "Editar detalles" : "Añadir detalles"}
+                  </button>
+                )}
+                {(!inherited || own?.birdId || path.length === 1) && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => {
+                      setChoosing(choosing === path ? "" : path);
+                      setQuery("");
+                    }}
+                  >
+                    Añadir desde el registro
+                  </button>
+                )}
+                {(info?.name || info?.birdId) &&
+                  !(!own && inherited && path.length > 1) && (
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() => update(path, { name: "" })}
+                    >
+                      Desvincular / limpiar
+                    </button>
+                  )}
+              </div>
+              {choosing === path && (
+                <div className="ancestor-picker">
+                  <label>
+                    Buscar registro para {ancestorLabel(path).toLowerCase()}
+                    <input
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Nombre o placa/código"
+                    />
+                  </label>
+                  <div role="list" aria-label="Coincidencias de ancestros">
+                    {birds
+                      .filter(
+                        (b) =>
+                          b.id !== bird.id &&
+                          (b.name + " " + b.code)
+                            .toLocaleLowerCase("es")
+                            .includes(query.trim().toLocaleLowerCase("es")),
+                      )
+                      .slice(0, 30)
+                      .map((b) => (
+                        <div role="listitem" key={b.id}>
+                          <button
+                            type="button"
+                            className="ancestor-option"
+                            onClick={() => {
+                              const entry = { name: b.name, birdId: b.id };
+                              if (
+                                Object.entries(bird.ancestry || {}).some(
+                                  ([key, a]) =>
+                                    key.startsWith(path) &&
+                                    key !== path &&
+                                    (a.name || a.birdId),
+                                )
+                              )
+                                setPending({ path, entry });
+                              else update(path, entry, true);
+                              setChoosing("");
+                            }}
+                          >
+                            {b.name} · {b.code}
+                            <small>{b.id}</small>
+                          </button>
+                        </div>
+                      ))}
+                  </div>
+                  <p className="help">
+                    Se muestran hasta 30 resultados. Escribe para acotar la
+                    búsqueda.
+                  </p>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }

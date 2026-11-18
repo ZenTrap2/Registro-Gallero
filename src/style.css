@@ -330,3 +330,31 @@ footer > span:last-child { display: flex; align-items: center; gap: 6px; }.foote
 /* Scroll regions contain their off-screen accessibility labels and wide tables. */
 .table-scroll{position:relative;min-width:0;width:100%}
 .attachments{margin:20px 0;min-width:0}.attachments h3{display:flex;gap:8px;align-items:center}.attachment-list{list-style:none;padding:0;margin:12px 0}.attachment-list li{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;min-width:0}.attachment-list li>span{flex:1;min-width:0;display:grid;gap:4px;overflow-wrap:anywhere}.attachment-list small{color:var(--muted)}.attachment-list .btn{flex-shrink:0}.life-fields{border:1px solid var(--line);border-radius:10px;padding:14px;margin:18px 0;min-width:0}.life-fields>label:not(.checkbox){display:grid;gap:8px}.ancestor-life{margin:8px 0}.ancestor-life label.checkbox{display:flex;align-items:center;gap:8px}.ancestor-life input[type=checkbox]{width:20px;min-height:20px;height:20px;flex-shrink:0}@media(max-width:480px){.attachment-list li{flex-wrap:wrap}.attachment-list li>span{flex-basis:100%}.attachments .btn{font-size:12px}}
+
+dialog.wide-dialog { width: min(1120px, calc(100% - 16px)); }
+.ancestor-tree-scroll { max-height: min(44vh, 460px); overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: #f7f9f3; }
+.ancestor-tree { display: grid; grid-template-columns: repeat(5, minmax(132px, 1fr)); align-items: start; gap: 18px; min-width: 746px; padding: 16px; }
+.ancestor-root { margin-top: 37px; padding: 14px; background: var(--green); color: white; border-radius: 10px; overflow-wrap: anywhere; }
+.ancestor-generation { position: relative; display: grid; gap: 8px; }
+.ancestor-generation h3 { position: sticky; top: 0; z-index: 1; margin: 0; padding-block: 6px; background: #f7f9f3; font-size: 13px; }
+.ancestor-node { position: relative; display: grid; gap: 4px; text-align: left; border: 1px solid #cbd9c4; border-radius: 8px; background: white; padding: 8px; min-height: 48px; }
+.ancestor-node::before { content: ""; position: absolute; width: 18px; height: 1px; background: #a6baa0; top: 50%; left: -19px; }
+.ancestor-node[aria-pressed="true"] { background: #e7efe1; border-color: var(--green); }
+.ancestor-node small { color: var(--muted); }
+.ancestor-selected { grid-template-columns: minmax(0, 1fr); padding-inline: 0; }
+.ancestor-editor:has(.ancestor-tree) { margin: 0; border: 0; padding: 0; }
+.ancestor-node[data-branch="true"]:not([aria-pressed="true"]) { border-color: #9fb79a; background: #f4f8f1; }
+.ancestor-node[data-branch="true"]::before { background: #537952; height: 2px; }
+.ancestor-generations { display: none; }
+@media (max-width: 820px) {
+  .ancestor-generations { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-bottom: 10px; }
+  .ancestor-generations .btn { justify-content: center; padding-inline: 6px; }
+  .ancestor-generations .btn[aria-pressed="true"] { background: #e7efe1; border-color: #537952; }
+  .ancestor-tree-scroll { max-height: min(36vh, 320px); }
+  .ancestor-tree { grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 10px; padding: 10px; }
+  .ancestor-root { margin: 0; padding: 8px 10px; }
+  .ancestor-generation:not([data-current="true"]) { display: none; }
+  .ancestor-generation { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .ancestor-generation h3 { grid-column: 1 / -1; }
+  .ancestor-node::before { display: none; }
+}

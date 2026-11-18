@@ -566,7 +566,11 @@ it("hereda abuelos del padre registrado y guarda detalles de la madre manual sin
   const dialog = screen.getByRole("dialog", { name: "Registrar un gallo" });
   await user.type(within(dialog).getByLabelText("Nombre *"), "Claudio");
   await user.type(within(dialog).getByLabelText("Código / placa *"), "C");
-  const father = within(dialog)
+  await user.click(
+    within(dialog).getByRole("button", { name: "Ancestros", exact: true }),
+  );
+  const tree = screen.getByRole("dialog", { name: "Árbol genealógico" });
+  const father = within(tree)
     .getByLabelText("Padre", { exact: true })
     .closest(".ancestor-field")!;
   await user.click(
@@ -578,12 +582,18 @@ it("hereda abuelos del padre registrado y guarda detalles de la madre manual sin
     within(father as HTMLElement).getByRole("button", { name: /Pepe · P/ }),
   );
   expect(
-    (within(dialog).getByLabelText("Padre de padre") as HTMLInputElement).value,
-  ).toBe("Juanito");
+    within(tree).getByRole("button", { name: "Padre de padre Juanito" }),
+  ).toBeTruthy();
   expect(
-    (within(dialog).getByLabelText("Madre de padre") as HTMLInputElement).value,
-  ).toBe("Juanita");
-  const mother = within(dialog)
+    within(tree).getByRole("button", { name: "Madre de padre Juanita" }),
+  ).toBeTruthy();
+  await user.click(
+    within(tree).getByRole("button", {
+      name: "Madre Añadir ancestro",
+      exact: true,
+    }),
+  );
+  const mother = within(tree)
     .getByLabelText("Madre", { exact: true })
     .closest(".ancestor-field")!;
   await user.type(
@@ -605,6 +615,9 @@ it("hereda abuelos del padre registrado y guarda detalles de la madre manual sin
   );
   await user.click(
     within(details).getByRole("button", { name: "Guardar registro" }),
+  );
+  await user.click(
+    within(tree).getByRole("button", { name: "Volver a la ficha" }),
   );
   await user.click(
     within(dialog).getByRole("button", { name: "Guardar registro" }),
@@ -699,11 +712,21 @@ it("conserva el fallecimiento de un ancestro manual al editar su nombre y guarda
     within(dialog).getByLabelText("Fecha de fallecimiento (opcional)"),
     "2026-01-01",
   );
+  await user.click(
+    within(dialog).getByRole("button", { name: "Ancestros", exact: true }),
+  );
+  const tree = screen.getByRole("dialog", { name: "Árbol genealógico" });
+  await user.click(
+    within(tree).getByRole("button", {
+      name: "Madre Añadir ancestro",
+      exact: true,
+    }),
+  );
   await user.type(
-    within(dialog).getByLabelText("Madre", { exact: true }),
+    within(tree).getByLabelText("Madre", { exact: true }),
     "Clara",
   );
-  const mother = within(dialog)
+  const mother = within(tree)
     .getByLabelText("Madre", { exact: true })
     .closest(".ancestor-field")!;
   await user.click(
@@ -718,8 +741,11 @@ it("conserva el fallecimiento de un ancestro manual al editar su nombre y guarda
     "2020-01-01",
   );
   await user.type(
-    within(dialog).getByLabelText("Madre", { exact: true }),
+    within(tree).getByLabelText("Madre", { exact: true }),
     " Azul",
+  );
+  await user.click(
+    within(tree).getByRole("button", { name: "Volver a la ficha" }),
   );
   const file = new File(["%PDF-1.4\n%%EOF"], "pedigri.pdf", {
     type: "application/pdf",

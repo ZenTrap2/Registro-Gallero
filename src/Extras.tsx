@@ -329,7 +329,7 @@ const help = [
   ],
   [
     "Pedigrí de cuatro generaciones",
-    "El formulario permite registrar padres, abuelos, bisabuelos y tatarabuelos, hasta 30 posiciones. Escribe nombres aunque no existan en la base. «Añadir detalles» guarda una ficha del ancestro dentro del linaje sin crear un animal en Mis gallos. «Añadir desde el registro» vincula un animal y hereda su linaje conocido. No se inventan datos faltantes. Las secciones se despliegan según necesites. En PDF aparecen los nombres; activa «Incluir detalles de los ancestros en el PDF» si también quieres sus datos completos.",
+    "El formulario permite registrar padres, abuelos, bisabuelos y tatarabuelos, hasta 30 posiciones. Escribe nombres aunque no existan en la base. «Añadir detalles» guarda una ficha del ancestro dentro del linaje sin crear un animal en Mis gallos. «Añadir desde el registro» vincula un animal y hereda su linaje conocido. No se inventan datos faltantes. Abre «Ancestros» en el formulario y selecciona una posición del árbol para editarla. En PDF aparecen los nombres; activa «Incluir detalles de los ancestros en el PDF» si también quieres sus datos completos.",
   ],
   [
     "Crear y retirar categorías",

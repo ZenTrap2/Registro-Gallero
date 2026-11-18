@@ -31,17 +31,22 @@ function acquire(reference: string, small: boolean) {
     },
   };
 }
-export function Photo({
-  source,
-  alt = "",
-  thumbnail = false,
-  ...props
-}: {
+type PhotoProps = {
   source: string;
   alt?: string;
   thumbnail?: boolean;
   className?: string;
-}) {
+};
+export function Photo(props: PhotoProps) {
+  // Remount on a source change so an error from a revoked URL cannot hide its replacement.
+  return <PhotoImage key={String(props.thumbnail) + props.source} {...props} />;
+}
+function PhotoImage({
+  source,
+  alt = "",
+  thumbnail = false,
+  ...props
+}: PhotoProps) {
   const [url, setUrl] = useState(isPhotoReference(source) ? "" : source),
     [failed, setFailed] = useState(false);
   useEffect(() => {
