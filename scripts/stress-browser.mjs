@@ -88,7 +88,12 @@ await build({
     await page
       .getByRole("button", { name: "Registrar gallo", exact: true })
       .waitFor();
-    await page.waitForFunction(() => Array.from(document.querySelectorAll("button")).some(button => button.textContent.trim() === "Registrar gallo" && !button.disabled));
+    await page.waitForFunction(() =>
+      Array.from(document.querySelectorAll("button")).some(
+        (button) =>
+          button.textContent.trim() === "Registrar gallo" && !button.disabled,
+      ),
+    );
     const photos = await page.evaluate(() =>
       Array.from({ length: 2400 }, (_, i) => {
         const canvas = document.createElement("canvas");
@@ -370,11 +375,39 @@ await build({
       .click();
     const tree = page.getByRole("dialog", { name: "Árbol genealógico" });
     await tree.getByRole("button", { name: /^Madre Ancestro manual/ }).click();
-    await tree.getByRole("button", { name: "Tatarabuelos", exact: true }).click();
+    await tree
+      .getByRole("button", { name: "Tatarabuelos", exact: true })
+      .click();
     assert.equal(await tree.locator(".ancestor-node:visible").count(), 16);
-    await tree.getByRole("button", { name: "Progenitores", exact: true }).click();
+    await tree
+      .getByRole("button", { name: "Progenitores", exact: true })
+      .click();
     assert.equal(await tree.locator(".ancestor-node:visible").count(), 2);
+    assert.equal(
+      await tree
+        .getByRole("navigation", { name: "Ruta del ancestro seleccionado" })
+        .getByText("Madre", { exact: true })
+        .count(),
+      1,
+    );
     await tree.screenshot({ path: path.join(out, "ancestros-movil.png") });
+    await page.setViewportSize({ width: 1366, height: 900 });
+    assert.equal(await tree.locator(".ancestor-node:visible").count(), 30);
+    await tree
+      .getByRole("navigation", { name: "Ir a una rama" })
+      .getByRole("button", { name: "Rama paterna" })
+      .click();
+    await tree.getByRole("button", { name: "Abuelos", exact: true }).click();
+    const trail = tree.getByRole("navigation", {
+      name: "Ruta del ancestro seleccionado",
+    });
+    await trail.getByRole("button", { name: "Padre", exact: true }).click();
+    assert.equal(
+      await tree.locator('[data-path="f"]').getAttribute("aria-pressed"),
+      "true",
+    );
+    await tree.screenshot({ path: path.join(out, "ancestros-escritorio.png") });
+    await page.setViewportSize({ width: 390, height: 844 });
     await tree.getByRole("button", { name: "Volver a la ficha" }).click();
     await editor.getByRole("button", { name: "Guardar registro" }).click();
     await editor.waitFor({ state: "hidden" });

@@ -1,3 +1,4 @@
+import { AncestryTree } from "./AncestryTree";
 import { Attachments } from "./Attachments";
 import { useMemo, useState } from "react";
 import type { Bird } from "./data";
@@ -20,6 +21,15 @@ export function AncestryFields({
   details: (path: string, entry: AncestorEntry) => void;
 }) {
   const byId = useMemo(() => new Map(birds.map((b) => [b.id, b])), [birds]);
+  const entries = useMemo(
+    () =>
+      new Map(
+        generationNames
+          .flatMap((_, index) => ancestorPaths(index + 1))
+          .map((path) => [path, ancestorAt(bird, path, byId)]),
+      ),
+    [bird, byId],
+  );
   const [selectedPath, setSelectedPath] = useState("f");
   const [choosing, setChoosing] = useState(""),
     [query, setQuery] = useState(""),
@@ -75,76 +85,18 @@ export function AncestryFields({
         Selecciona un ancestro para editarlo o vincularlo al registro. Los
         cambios se guardan con la ficha.
       </p>
-      <nav className="ancestor-generations" aria-label="Generaciones del árbol">
-        {generationNames.map((title, index) => (
-          <button
-            type="button"
-            className="btn"
-            key={title}
-            aria-pressed={selectedPath.length === index + 1}
-            onClick={() => {
-              const generation = index + 1;
-              setSelectedPath(
-                selectedPath.slice(0, generation).padEnd(generation, "f"),
-              );
-              setChoosing("");
-            }}
-          >
-            {title}
-          </button>
-        ))}
-      </nav>
-      <div
-        className="ancestor-tree-scroll"
-        role="region"
-        aria-label="Árbol de cuatro generaciones"
-        tabIndex={0}
-      >
-        <div className="ancestor-tree">
-          <div className="ancestor-root">
-            {bird.name.trim() || "Animal de la ficha"}
-          </div>
-          {generationNames.map((title, i) => (
-            <section
-              className="ancestor-generation"
-              key={title}
-              data-current={selectedPath.length === i + 1}
-            >
-              <h3>{title}</h3>
-              {ancestorPaths(i + 1).map((path) => {
-                const entry = ancestorAt(bird, path, byId);
-                return (
-                  <button
-                    type="button"
-                    key={path}
-                    className="ancestor-node"
-                    aria-label={
-                      ancestorLabel(path) +
-                      " " +
-                      (entry?.name || "Añadir ancestro")
-                    }
-                    data-branch={
-                      selectedPath.startsWith(path) ||
-                      path.startsWith(selectedPath)
-                    }
-                    aria-pressed={path === selectedPath}
-                    onClick={() => {
-                      setSelectedPath(path);
-                      setChoosing("");
-                    }}
-                  >
-                    <small>{ancestorLabel(path)}</small>
-                    <strong>{entry?.name || "Añadir ancestro"}</strong>
-                  </button>
-                );
-              })}
-            </section>
-          ))}
-        </div>
-      </div>
+      <AncestryTree
+        name={bird.name}
+        selectedPath={selectedPath}
+        entries={entries}
+        select={(path) => {
+          setSelectedPath(path);
+          setChoosing("");
+        }}
+      />
       <div className="ancestor-fields ancestor-selected">
         {[selectedPath].map((path) => {
-          const info = ancestorAt(bird, path, byId),
+          const info = entries.get(path),
             own = bird.ancestry?.[path],
             inherited = info?.birdId ? true : !!info && info !== own;
           return (
